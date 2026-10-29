@@ -1,0 +1,1 @@
+ALTER TABLE `orders` ADD `donationAmount` decimal(10,2) DEFAULT '2';

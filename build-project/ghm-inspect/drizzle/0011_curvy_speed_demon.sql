@@ -1,0 +1,1 @@
+ALTER TABLE `notifications` MODIFY COLUMN `type` enum('order_confirmed','order_shipped','order_delivered','rider_nearby','rider_arriving','delivery_confirmation','payment_received','product_available','promotion','seller_new_order','seller_low_stock') NOT NULL;

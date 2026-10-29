@@ -1,0 +1,3 @@
+^/ const easProjectId = process.env.EXPO_PROJECT_ID?.trim();
+^X
+

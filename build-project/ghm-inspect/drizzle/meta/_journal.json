@@ -1,0 +1,174 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1763372440610,
+      "tag": "0000_elite_eternals",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1783256375598,
+      "tag": "0001_organic_the_initiative",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1786639367075,
+      "tag": "0002_striped_sauron",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1786639616466,
+      "tag": "0003_heavy_famine",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1786730013865,
+      "tag": "0004_mighty_shard",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1786730627868,
+      "tag": "0005_clean_songbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1786731380192,
+      "tag": "0006_warm_supernaut",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1786732108118,
+      "tag": "0007_stiff_chamber",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1786734424743,
+      "tag": "0008_aromatic_professor_monster",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1786808163031,
+      "tag": "0009_nervous_sway",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1786810273521,
+      "tag": "0010_jittery_crystal",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1786822893856,
+      "tag": "0011_curvy_speed_demon",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1786848101782,
+      "tag": "0012_public_ink",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1786850743924,
+      "tag": "0013_chubby_venus",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1786851543038,
+      "tag": "0014_married_whizzer",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "5",
+      "when": 1786858300027,
+      "tag": "0015_slow_wildside",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "5",
+      "when": 1786859160436,
+      "tag": "0016_tearful_cassandra_nova",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1786962790944,
+      "tag": "0017_cold_omega_sentinel",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1787103978438,
+      "tag": "0018_lovely_dormammu",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1788460188870,
+      "tag": "0019_shocking_microbe",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1790868664930,
+      "tag": "0020_sweet_leech",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1790910413175,
+      "tag": "0021_chilly_harry_osborn",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1791047541813,
+      "tag": "0022_gifted_prima",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1792384472785,
+      "tag": "0023_faithful_lily_hollister",
+      "breakpoints": true
+    }
+  ]
+}

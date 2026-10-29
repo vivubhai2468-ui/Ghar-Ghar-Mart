@@ -1,0 +1,21 @@
+CREATE TABLE `customerAddresses` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`userId` int NOT NULL,
+	`label` varchar(80) NOT NULL,
+	`recipientName` varchar(255),
+	`phone` varchar(20),
+	`addressLine` text NOT NULL,
+	`apartment` varchar(255),
+	`floor` varchar(64),
+	`landmark` varchar(255),
+	`city` varchar(120),
+	`state` varchar(120),
+	`pincode` varchar(12),
+	`deliveryInstructions` text,
+	`latitude` decimal(10,7) NOT NULL,
+	`longitude` decimal(10,7) NOT NULL,
+	`isDefault` boolean NOT NULL DEFAULT false,
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT `customerAddresses_id` PRIMARY KEY(`id`)
+);

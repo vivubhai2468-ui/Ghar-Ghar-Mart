@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `deliveryPartnerStatus` enum('pending','approved','rejected') DEFAULT 'pending';
