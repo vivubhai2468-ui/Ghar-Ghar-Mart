@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import { createServer } from "http";
 import net from "net";
 import path from "path";
@@ -12,6 +13,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { logServerError } from "./logger";
 import { getDb } from "../db";
+import { ADMIN_PREVIEW_OPEN_ID_PREFIX, sdk } from "./sdk";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -35,6 +37,15 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  const adminLoginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      error: "Too many login attempts. Please try again later.",
+    },
+  });
 
   app.use((req, res, next) => {
     const incomingRequestId = req.header("x-request-id")?.trim();
@@ -68,6 +79,70 @@ async function startServer() {
 
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+  app.post("/api/admin/preview-login", adminLoginLimiter, async (req, res) => {
+    const username =
+      typeof req.body?.username === "string"
+        ? req.body.username.trim()
+        : "";
+
+    const password =
+      typeof req.body?.password === "string"
+        ? req.body.password
+        : "";
+
+    const expectedUsername = process.env.ADMIN_PREVIEW_USERNAME;
+    const expectedPassword = process.env.ADMIN_PREVIEW_PASSWORD;
+
+    // Fail closed if administrator credentials are not configured.
+    if (!expectedUsername || !expectedPassword) {
+      console.error("Admin login is disabled: credentials are not configured.");
+      res.status(503).json({
+        error: "Administrator login is temporarily unavailable",
+      });
+      return;
+    }
+
+    if (username !== expectedUsername || password !== expectedPassword) {
+      res.status(401).json({
+        error: "Invalid administrator credentials",
+      });
+      return;
+    }
+
+    const token = await sdk.createSessionToken(
+      `${ADMIN_PREVIEW_OPEN_ID_PREFIX}${username}`,
+      {
+        name: "Ghar Ghar Mart Administrator",
+        expiresInMs: 8 * 60 * 60 * 1000,
+      },
+    );
+    res.json({ token });
+  });
+
+  app.get("/api/admin/session", async (req, res) => {
+    try {
+      const user = await sdk.authenticateRequest(req);
+
+      if (!user || user.role !== "admin") {
+        res.status(401).json({
+          error: "Invalid or expired administrator session",
+        });
+        return;
+      }
+
+      res.json({
+        authenticated: true,
+        name: user.name,
+      });
+    } catch (error) {
+      console.error("Admin session verification failed.");
+
+      res.status(401).json({
+        error: "Invalid or expired administrator session",
+      });
+    }
+  });
 
   const webDist = path.resolve(process.cwd(), "dist-web");
   app.use(express.static(webDist, { extensions: ["html"] }));

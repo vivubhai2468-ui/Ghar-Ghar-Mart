@@ -4,7 +4,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router, protectedProcedure, adminProcedure } from "./_core/trpc";
 import * as db from "./db";
-import { createAuditLog, getAdminOrders, getAdminProducts, getAdminSellers, getAdminUsers, getPendingSellers, updateAdminSellerRecord, updateAdminUserRecord, updateOrderStatus, updateProductStatus, updateProductStock, updateSellerStatus } from "./admin-helpers";
+import { createAuditLog, getAdminOrders, getAdminProducts, getAdminSellers, getAdminUsers, getPendingSellers, updateAdminProduct, updateAdminSellerRecord, updateAdminUserRecord, updateOrderStatus, updateProductStatus, updateProductStock, updateSellerStatus } from "./admin-helpers";
 import { sdk } from "./_core/sdk";
 import { sendAuthenticationOtp } from "./auth-sms";
 import { sendDeliveryPush } from "./delivery-push";
@@ -1369,7 +1369,7 @@ export const appRouter = router({
 
     products: router({
       list: protectedProcedure
-        .input(z.object({ limit: z.number().min(1).max(100).optional() }).optional())
+        .input(z.object({ limit: z.number().min(1).max(1000).optional() }).optional())
         .query(({ ctx, input }) => {
           if (ctx.user?.role !== "admin") throw new Error("Only admins can view products");
           return getAdminProducts(input?.limit ?? 100, 0);
@@ -1431,6 +1431,30 @@ export const appRouter = router({
           const result = await updateProductStock(input.id, input.stock);
           await createAuditLog({ adminId: ctx.user.id, adminName: ctx.user.name || "Administrator", action: "updated_product_stock", entityType: "product", entityId: input.id, newValue: { stock: input.stock }, status: "success" });
           return result;
+        }),
+
+      update: protectedProcedure
+        .input(z.object({
+          id: z.number().int().positive(),
+          name: z.string().trim().min(2).max(255),
+          description: z.string().trim().max(2000).nullable().optional(),
+          price: z.number().finite().positive(),
+          originalPrice: z.number().finite().positive().nullable().optional(),
+          discount: z.number().int().min(0).max(100).optional(),
+          stock: z.number().int().min(0),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          if (ctx.user?.role !== "admin") throw new Error("Only admins can edit products");
+          const result = await updateAdminProduct(input.id, {
+            name: input.name,
+            description: input.description ?? null,
+            price: input.price.toFixed(2),
+            originalPrice: input.originalPrice == null ? null : input.originalPrice.toFixed(2),
+            discount: input.discount ?? 0,
+            stock: input.stock,
+          });
+          await createAuditLog({ adminId: ctx.user.id, adminName: ctx.user.name || "Administrator", action: "updated_product", entityType: "product", entityId: input.id, oldValue: result.before, newValue: result.after, status: "success" });
+          return result.after;
         }),
     }),
 

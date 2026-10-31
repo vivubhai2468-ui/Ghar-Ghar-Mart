@@ -24,6 +24,8 @@ export type SessionPayload = {
   name: string;
 };
 
+export const ADMIN_PREVIEW_OPEN_ID_PREFIX = "admin-preview:";
+
 const EXCHANGE_TOKEN_PATH = `/webdev.v1.WebDevAuthPublicService/ExchangeToken`;
 const GET_USER_INFO_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfo`;
 const GET_USER_INFO_WITH_JWT_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfoWithJwt`;
@@ -193,8 +195,13 @@ class SDKServer {
       });
       const { openId, appId, name } = payload as Record<string, unknown>;
 
-      if (!isNonEmptyString(openId) || !isNonEmptyString(appId) || !isNonEmptyString(name)) {
-        console.warn("[Auth] Session payload missing required fields");
+      if (
+        !isNonEmptyString(openId) ||
+        !isNonEmptyString(appId) ||
+        appId !== ENV.appId ||
+        !isNonEmptyString(name)
+      ) {
+        console.warn("[Auth] Session payload missing or invalid required fields");
         return null;
       }
 
@@ -245,6 +252,18 @@ class SDKServer {
 
     if (!session) {
       throw ForbiddenError("Invalid session cookie");
+    }
+
+    if (session.openId.startsWith(ADMIN_PREVIEW_OPEN_ID_PREFIX)) {
+      return {
+        id: 0,
+        openId: session.openId,
+        name: session.name || "Ghar Ghar Mart Administrator",
+        email: "admin-preview",
+        loginMethod: "admin-preview",
+        role: "admin",
+        lastSignedIn: new Date(),
+      } as AuthenticatedUser;
     }
 
     if (session.openId.startsWith(CRON_OPEN_ID_PREFIX)) {
