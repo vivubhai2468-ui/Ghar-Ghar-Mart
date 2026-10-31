@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SessionAuth from '@/lib/_core/auth';
 import * as Api from '@/lib/_core/api';
@@ -34,6 +35,22 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// SecureStore is only used on native platforms.
+const getStoredUserToken = async (): Promise<string | null> => {
+  if (Platform.OS === 'web') return null;
+  return SecureStore.getItemAsync('userToken');
+};
+
+const setStoredUserToken = async (token: string): Promise<void> => {
+  if (Platform.OS === 'web') return;
+  await SecureStore.setItemAsync('userToken', token);
+};
+
+const deleteStoredUserToken = async (): Promise<void> => {
+  if (Platform.OS === 'web') return;
+  await SecureStore.deleteItemAsync('userToken');
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   console.log('[AUTH] AuthProvider function called');
   const [user, setUser] = useState<User | null>(null);
@@ -42,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const clearPersistedSession = async () => {
     await Promise.all([
-      SecureStore.deleteItemAsync('userToken'),
+      deleteStoredUserToken(),
       AsyncStorage.removeItem('user'),
       AsyncStorage.removeItem('userRole'),
       SessionAuth.removeSessionToken(),
@@ -68,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const restorePromise = (async () => {
           try {
             console.log('[AUTH] Attempting to restore token from SecureStore');
-            const token = await SecureStore.getItemAsync('userToken');
+            const token = await getStoredUserToken();
             console.log('[AUTH] Token restored:', !!token);
             
             console.log('[AUTH] Attempting to restore user from AsyncStorage');
@@ -151,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Store user and token
         const token = 'mock-token-' + Date.now();
-        await SecureStore.setItemAsync('userToken', token);
+        await setStoredUserToken(token);
         await AsyncStorage.setItem('user', JSON.stringify(mockUser));
         await AsyncStorage.setItem('userRole', role);
 
@@ -200,7 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
 
         const token = 'mock-token-' + Date.now();
-        await SecureStore.setItemAsync('userToken', token);
+        await setStoredUserToken(token);
         await AsyncStorage.setItem('user', JSON.stringify(newUser));
         await AsyncStorage.setItem('userRole', newUser.role);
 
@@ -226,7 +243,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
 
         await Promise.all([
-          SecureStore.setItemAsync('userToken', sessionToken),
+          setStoredUserToken(sessionToken),
           AsyncStorage.setItem('user', JSON.stringify(user)),
           AsyncStorage.setItem('userRole', user.role),
         ]);

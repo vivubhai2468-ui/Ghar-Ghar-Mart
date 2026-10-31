@@ -17,7 +17,6 @@ import {
 import { ScreenContainer } from "@/components/screen-container";
 import { getUserFacingError } from "@/lib/user-facing-error";
 import { useAdminAuth } from "@/lib/admin-auth-context";
-import { PRODUCTS as BUILT_IN_PRODUCTS } from "@/lib/products-data";
 import { trpc } from "@/lib/trpc";
 
 type TabId = "overview" | "orders" | "catalogue" | "people" | "sellers";
@@ -49,7 +48,7 @@ type Seller = {
 type AdminProduct = { id: number; name: string; category: string; price: number; stock: number; status: string; builtIn?: boolean };
 type AdminPerson = { id: number; name: string; email: string; orders: number; tag: string };
 type LiveOrder = { id: number; orderNumber: string; userId: number; total: string | number; shippingCost?: string | number | null; deliveryDistanceKm?: string | number | null; paymentStatus: "pending" | "completed" | "failed"; paymentProofUrl?: string | null; status: OrderStatus; createdAt: Date | string };
-type LiveProduct = { id: number; name: string; categoryId: number; price: string | number; stock: number; isActive: boolean; approvalStatus?: "pending" | "approved" | "rejected"; builtIn?: boolean };
+type LiveProduct = { id: number; name: string; categoryId: number; description?: string | null; price: string | number; originalPrice?: string | number | null; discount?: number | null; stock: number; isActive: boolean; approvalStatus?: "pending" | "approved" | "rejected"; builtIn?: boolean };
 type LiveSeller = {
   id: number;
   name: string | null;
@@ -132,6 +131,14 @@ export default function AdminDashboardScreen() {
   const approveSeller = trpc.admin.sellers.approve.useMutation({ onSuccess: () => void Promise.all([utils.admin.sellers.list.invalidate(), utils.admin.dashboard.invalidate()]) });
   const rejectSeller = trpc.admin.sellers.reject.useMutation({ onSuccess: () => void Promise.all([utils.admin.sellers.list.invalidate(), utils.admin.dashboard.invalidate()]) });
   const updateProductStatus = trpc.admin.products.updateStatus.useMutation({ onSuccess: () => void Promise.all([utils.admin.products.list.invalidate(), utils.admin.dashboard.invalidate()]) });
+  const updateProduct = trpc.admin.products.update.useMutation({
+    onSuccess: async () => {
+      await Promise.all([utils.admin.products.list.invalidate(), utils.products.list.invalidate(), utils.admin.dashboard.invalidate()]);
+      setProductModal(false);
+      Alert.alert("Product updated", "The changes are now live in the shopper catalogue.");
+    },
+    onError: (error) => Alert.alert("Product was not updated", getUserFacingError(error, "Please check the product details and try again.")),
+  });
   const createProduct = trpc.admin.products.create.useMutation({
     onSuccess: async (product) => {
       await Promise.all([
@@ -157,21 +164,6 @@ export default function AdminDashboardScreen() {
     for (const product of (productsQuery.data as LiveProduct[] | undefined ?? [])) records.set(product.id, product);
     for (const product of (shopperProductsQuery.data as LiveProduct[] | undefined ?? [])) {
       if (!records.has(product.id)) records.set(product.id, product);
-    }
-    for (const product of BUILT_IN_PRODUCTS) {
-      const id = Number(product.id);
-      if (!records.has(id)) {
-        records.set(id, {
-          id,
-          name: product.name,
-          categoryId: 0,
-          price: product.price,
-          stock: product.stock,
-          isActive: true,
-          approvalStatus: "approved",
-          builtIn: true,
-        });
-      }
     }
     return Array.from(records.values());
   }, [productsQuery.data, shopperProductsQuery.data]);
@@ -203,6 +195,8 @@ export default function AdminDashboardScreen() {
   const [orderStatusModal, setOrderStatusModal] = useState(false);
   const [productModal, setProductModal] = useState(false);
   const [productDraft, setProductDraft] = useState<ProductDraft>({ sellerId: "", categoryId: "", name: "", description: "", price: "", originalPrice: "", discount: "", stock: "", publishImmediately: true });
+  const [editingProductId, setEditingProductId] = useState<number | null>(null);
+
 
   const handleLogout = () => {
     Alert.alert("Sign out", "Sign out of the administrator control center?", [
@@ -221,7 +215,15 @@ export default function AdminDashboardScreen() {
   const pendingSellerCount = useMemo(() => sellers.filter((seller) => seller.status === "pending").length, [sellers]);
   const lowStockCount = useMemo(() => products.filter((product) => product.stock < 20).length, [products]);
   const pendingOrderCount = useMemo(() => orders.filter((order) => order.status === "pending").length, [orders]);
-  const canManageProducts = productsQuery.isSuccess;
+  const canManageProducts = Boolean(adminUser);
+  console.log("[Admin Catalogue Diagnostic]", {
+    adminUser: adminUser?.role,
+    status: productsQuery.status,
+    isSuccess: productsQuery.isSuccess,
+    isError: productsQuery.isError,
+    error: productsQuery.error?.message,
+    productCount: productsQuery.data?.length,
+  });
 
   if (!adminUser) {
     return (
@@ -268,9 +270,26 @@ export default function AdminDashboardScreen() {
   };
 
   const openProductCreator = () => {
+    setEditingProductId(null);
     const approvedSeller = (sellersQuery.data as LiveSeller[] | undefined ?? []).find((seller) => seller.shopStatus === "approved");
     const firstCategory = (categoriesQuery.data as LiveCategory[] | undefined ?? []).find((category) => category.isActive);
     setProductDraft((current) => ({ ...current, sellerId: current.sellerId || String(approvedSeller?.id ?? ""), categoryId: current.categoryId || String(firstCategory?.id ?? "") }));
+    setProductModal(true);
+  };
+
+  const openProductEditor = (product: LiveProduct) => {
+    setEditingProductId(product.id);
+    setProductDraft({
+      sellerId: "",
+      categoryId: String(product.categoryId),
+      name: product.name,
+      description: product.description ?? "",
+      price: String(product.price),
+      originalPrice: product.originalPrice == null ? "" : String(product.originalPrice),
+      discount: product.discount == null ? "" : String(product.discount),
+      stock: String(product.stock),
+      publishImmediately: product.isActive,
+    });
     setProductModal(true);
   };
 
@@ -281,6 +300,10 @@ export default function AdminDashboardScreen() {
     const stock = Number(productDraft.stock);
     if (!sellerId || !categoryId || productDraft.name.trim().length < 2 || !Number.isFinite(price) || price <= 0 || !Number.isInteger(stock) || stock < 0) {
       Alert.alert("Complete product details", "Choose an approved seller and category, then enter a valid name, price, and whole-number stock quantity.");
+      return;
+    }
+    if (editingProductId !== null) {
+      updateProduct.mutate({ id: editingProductId, name: productDraft.name.trim(), description: productDraft.description.trim() || null, price, originalPrice: productDraft.originalPrice.trim() ? Number(productDraft.originalPrice) : null, discount: productDraft.discount.trim() ? Number(productDraft.discount) : 0, stock });
       return;
     }
     createProduct.mutate({ sellerId, categoryId, name: productDraft.name.trim(), description: productDraft.description.trim() || undefined, price, originalPrice: productDraft.originalPrice.trim() ? Number(productDraft.originalPrice) : undefined, discount: productDraft.discount.trim() ? Number(productDraft.discount) : undefined, stock, publishImmediately: productDraft.publishImmediately });
@@ -335,8 +358,8 @@ export default function AdminDashboardScreen() {
       </View>
 
       <View style={styles.pricingCard}>
-        <View style={styles.pricingHeader}><View><Text style={styles.pricingTitle}>Delivery pricing</Text><Text style={styles.pricingDetail}>Fixed rate · actual road distance · excess kilometres rounded up</Text></View><Ionicons name="navigate-outline" size={22} color="#28723B" /></View>
-        <Text style={styles.pricingFormula}>₹10 for the first 2 km · ₹5 per started kilometre after that · ₹2 donation per order</Text>
+      <View style={styles.pricingHeader}><View><Text style={styles.pricingTitle}>Delivery pricing</Text><Text style={styles.pricingDetail}>Fixed ₹10 delivery charge</Text></View><Ionicons name="navigate-outline" size={22} color="#28723B" /></View>
+      <Text style={styles.pricingFormula}>₹10 delivery charge per order · ₹2 donation per order</Text>
       </View>
 
       <SectionHeading title="Priority inbox" detail="Respond to the work that can affect fulfilment." />
@@ -418,6 +441,33 @@ export default function AdminDashboardScreen() {
   const renderCatalogue = () => (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       <View style={styles.pageIntro}><Text style={styles.pageKicker}>MERCHANDISING</Text><Text style={styles.pageTitle}>Catalogue health</Text><Text style={styles.pageSubtitle}>Watch item availability and keep the shopper-facing selection ready.</Text></View>
+      <View style={styles.listCard}>
+        <Text style={styles.productName}>Admin Catalogue Diagnostics</Text>
+
+        <Text style={styles.pageSubtitle}>
+          Admin role: {adminUser?.role ?? "Not available"}
+        </Text>
+
+        <Text style={styles.pageSubtitle}>
+          Query status: {productsQuery.status}
+        </Text>
+
+        <Text style={styles.pageSubtitle}>
+          Success: {String(productsQuery.isSuccess)}
+        </Text>
+
+        <Text style={styles.pageSubtitle}>
+          Error: {productsQuery.error?.message ?? "None"}
+        </Text>
+
+        <Text style={styles.pageSubtitle}>
+          Admin products returned: {productsQuery.data?.length ?? 0}
+        </Text>
+
+        <Text style={styles.pageSubtitle}>
+          Shopper products returned: {shopperProductsQuery.data?.length ?? 0}
+        </Text>
+      </View>
       {productsQuery.isError ? (
         <View style={styles.listCard}>
           <Text style={styles.productName}>Showing products currently available in the app</Text>
@@ -443,7 +493,7 @@ export default function AdminDashboardScreen() {
             <View style={styles.productRow}>
               <View style={styles.productImage}><Ionicons name="basket-outline" size={23} color="#28723B" /></View>
               <View style={styles.productCopy}><Text style={styles.productName}>{product.name}</Text><Text style={styles.productCategory}>{product.category}{product.builtIn ? " · app built-in" : ""}</Text><View style={styles.productMetaRow}><Text style={styles.productPrice}>₹{product.price}</Text><Text style={styles.productStock}>{product.stock} in stock</Text></View></View>
-              <View style={styles.productActions}><StatusChip label={product.status} />{canManageProducts && !product.builtIn ? <><Pressable onPress={() => Alert.alert("Product editor", `Open editing controls for ${product.name}.`)} style={({ pressed }) => [styles.miniIconButton, pressed && styles.pressed]}><Ionicons name="pencil-outline" size={17} color="#28723B" /></Pressable><Pressable onPress={() => removeProduct(product.id, product.name)} style={({ pressed }) => [styles.miniIconButton, styles.dangerButton, pressed && styles.pressed]}><Ionicons name="trash-outline" size={17} color="#B42318" /></Pressable></> : null}</View>
+              <View style={styles.productActions}><StatusChip label={product.status} />{canManageProducts ? <><Pressable onPress={() => openProductEditor(catalogueRecords.find((record) => record.id === product.id)!)} style={({ pressed }) => [styles.miniIconButton, pressed && styles.pressed]}><Ionicons name="pencil-outline" size={17} color="#28723B" /></Pressable><Pressable onPress={() => removeProduct(product.id, product.name)} style={({ pressed }) => [styles.miniIconButton, styles.dangerButton, pressed && styles.pressed]}><Ionicons name="trash-outline" size={17} color="#B42318" /></Pressable></> : null}</View>
             </View>
             {index < products.length - 1 ? <View style={styles.rowDivider} /> : null}
           </View>
@@ -492,12 +542,12 @@ export default function AdminDashboardScreen() {
       </View>
 
       <Modal visible={productModal} transparent animationType="slide" onRequestClose={() => setProductModal(false)}>
-        <View style={styles.modalBackdrop}><View style={[styles.modalSheet, { maxHeight: "92%" }]}><View style={styles.modalHandle} /><View style={styles.modalHeading}><View><Text style={styles.modalEyebrow}>LIVE CATALOGUE</Text><Text style={styles.modalTitle}>Add product</Text></View><Pressable onPress={() => setProductModal(false)} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}><Ionicons name="close" size={20} color="#173C25" /></Pressable></View><ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.modalBackdrop}><View style={[styles.modalSheet, { maxHeight: "92%" }]}><View style={styles.modalHandle} /><View style={styles.modalHeading}><View><Text style={styles.modalEyebrow}>LIVE CATALOGUE</Text><Text style={styles.modalTitle}>{editingProductId === null ? "Add product" : "Edit product"}</Text></View><Pressable onPress={() => setProductModal(false)} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}><Ionicons name="close" size={20} color="#173C25" /></Pressable></View><ScrollView showsVerticalScrollIndicator={false}>
           {([ ["Product name", "name", false], ["Description", "description", true], ["Price", "price", false], ["Original price", "originalPrice", false], ["Discount %", "discount", false], ["Stock quantity", "stock", false] ] as const).map(([label, key, multiline]) => <View key={key} style={{ marginTop: 13 }}><Text style={styles.modalFieldLabel}>{label}</Text><TextInput value={productDraft[key]} onChangeText={(value) => setProductDraft((current) => ({ ...current, [key]: value }))} keyboardType={key === "name" || key === "description" ? "default" : "decimal-pad"} multiline={multiline} placeholder={key === "description" ? "Optional shopper-facing description" : label} placeholderTextColor="#9AA79E" style={[styles.modalInput, multiline && { minHeight: 76, textAlignVertical: "top" }]} /></View>)}
           <Text style={[styles.modalFieldLabel, { marginTop: 13 }]}>Approved seller</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 8 }}>{((sellersQuery.data ?? []) as LiveSeller[]).filter((seller) => seller.shopStatus === "approved" && seller.isActive !== false).map((seller) => <Pressable key={seller.id} onPress={() => setProductDraft((current) => ({ ...current, sellerId: String(seller.id) }))} style={[styles.choicePill, productDraft.sellerId === String(seller.id) && styles.choicePillActive]}><Text style={[styles.choicePillText, productDraft.sellerId === String(seller.id) && styles.choicePillTextActive]}>{seller.shopName || seller.name || `Seller #${seller.id}`}</Text></Pressable>)}</ScrollView>
           <Text style={[styles.modalFieldLabel, { marginTop: 13 }]}>Category</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 8 }}>{((categoriesQuery.data ?? []) as LiveCategory[]).filter((category) => category.isActive).map((category) => <Pressable key={category.id} onPress={() => setProductDraft((current) => ({ ...current, categoryId: String(category.id) }))} style={[styles.choicePill, productDraft.categoryId === String(category.id) && styles.choicePillActive]}><Text style={[styles.choicePillText, productDraft.categoryId === String(category.id) && styles.choicePillTextActive]}>{category.name}</Text></Pressable>)}</ScrollView>
           <Pressable onPress={() => setProductDraft((current) => ({ ...current, publishImmediately: !current.publishImmediately }))} style={[styles.publishToggle, productDraft.publishImmediately && styles.publishToggleActive]}><Ionicons name={productDraft.publishImmediately ? "checkmark-circle" : "ellipse-outline"} size={21} color={productDraft.publishImmediately ? "#166534" : "#68776D"} /><View style={{ flex: 1 }}><Text style={styles.publishToggleTitle}>Publish immediately</Text><Text style={styles.publishToggleText}>Approved products appear in the consumer catalogue on the next live refresh.</Text></View></Pressable>
-          <Pressable onPress={submitProduct} disabled={createProduct.isPending} style={({ pressed }) => [styles.modalPrimaryButton, { marginTop: 16 }, pressed && styles.pressed, createProduct.isPending && { opacity: 0.6 }]}><Text style={styles.modalPrimaryText}>{createProduct.isPending ? "Publishing…" : "Create product"}</Text><Ionicons name="checkmark" size={18} color="#14532D" /></Pressable>
+          <Pressable onPress={submitProduct} disabled={createProduct.isPending || updateProduct.isPending} style={({ pressed }) => [styles.modalPrimaryButton, { marginTop: 16 }, pressed && styles.pressed, (createProduct.isPending || updateProduct.isPending) && { opacity: 0.6 }]}><Text style={styles.modalPrimaryText}>{createProduct.isPending || updateProduct.isPending ? "Saving…" : editingProductId === null ? "Create product" : "Save changes"}</Text><Ionicons name="checkmark" size={18} color="#14532D" /></Pressable>
         </ScrollView></View></View>
       </Modal>
 
