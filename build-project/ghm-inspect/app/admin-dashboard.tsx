@@ -215,7 +215,7 @@ export default function AdminDashboardScreen() {
   const pendingSellerCount = useMemo(() => sellers.filter((seller) => seller.status === "pending").length, [sellers]);
   const lowStockCount = useMemo(() => products.filter((product) => product.stock < 20).length, [products]);
   const pendingOrderCount = useMemo(() => orders.filter((order) => order.status === "pending").length, [orders]);
-  const canManageProducts = Boolean(adminUser);
+  const canManageProducts = true;
   console.log("[Admin Catalogue Diagnostic]", {
     adminUser: adminUser?.role,
     status: productsQuery.status,
