@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Modal,
@@ -194,8 +194,25 @@ export default function AdminDashboardScreen() {
   const [newStatus, setNewStatus] = useState<OrderStatus>("pending");
   const [orderStatusModal, setOrderStatusModal] = useState(false);
   const [productModal, setProductModal] = useState(false);
+  const [productFormError, setProductFormError] = useState("");
   const [productDraft, setProductDraft] = useState<ProductDraft>({ sellerId: "", categoryId: "", name: "", description: "", price: "", originalPrice: "", discount: "", stock: "", publishImmediately: true });
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!productModal || editingProductId !== null) return;
+
+    const approvedSeller = (sellersQuery.data as LiveSeller[] | undefined ?? [])
+      .find((seller) => seller.shopStatus === "approved" && seller.isActive !== false);
+
+    const firstCategory = (categoriesQuery.data as LiveCategory[] | undefined ?? [])
+      .find((category) => category.isActive);
+
+    setProductDraft((current) => ({
+      ...current,
+      sellerId: current.sellerId || String(approvedSeller?.id ?? ""),
+      categoryId: current.categoryId || String(firstCategory?.id ?? ""),
+    }));
+  }, [productModal, editingProductId, sellersQuery.data, categoriesQuery.data]);
 
 
   const handleLogout = () => {
@@ -294,12 +311,20 @@ export default function AdminDashboardScreen() {
   };
 
   const submitProduct = () => {
+    setProductFormError("");
     const sellerId = Number(productDraft.sellerId);
     const categoryId = Number(productDraft.categoryId);
     const price = Number(productDraft.price);
     const stock = Number(productDraft.stock);
     if (!sellerId || !categoryId || productDraft.name.trim().length < 2 || !Number.isFinite(price) || price <= 0 || !Number.isInteger(stock) || stock < 0) {
-      Alert.alert("Complete product details", "Choose an approved seller and category, then enter a valid name, price, and whole-number stock quantity.");
+      const missing = [
+        !sellerId && "Select an approved seller",
+        !categoryId && "Select a category",
+        productDraft.name.trim().length < 2 && "Enter a product name with at least 2 characters",
+        (!Number.isFinite(price) || price <= 0) && "Enter a price greater than zero",
+        (!Number.isInteger(stock) || stock < 0) && "Enter a whole-number stock quantity (zero or more)",
+      ].filter(Boolean).join(". ");
+      setProductFormError(missing);
       return;
     }
     if (editingProductId !== null) {
@@ -548,6 +573,7 @@ export default function AdminDashboardScreen() {
           <Text style={[styles.modalFieldLabel, { marginTop: 13 }]}>Approved seller</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 8 }}>{((sellersQuery.data ?? []) as LiveSeller[]).filter((seller) => seller.shopStatus === "approved" && seller.isActive !== false).map((seller) => <Pressable key={seller.id} onPress={() => setProductDraft((current) => ({ ...current, sellerId: String(seller.id) }))} style={[styles.choicePill, productDraft.sellerId === String(seller.id) && styles.choicePillActive]}><Text style={[styles.choicePillText, productDraft.sellerId === String(seller.id) && styles.choicePillTextActive]}>{seller.shopName || seller.name || `Seller #${seller.id}`}</Text></Pressable>)}</ScrollView>
           <Text style={[styles.modalFieldLabel, { marginTop: 13 }]}>Category</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 8 }}>{((categoriesQuery.data ?? []) as LiveCategory[]).filter((category) => category.isActive).map((category) => <Pressable key={category.id} onPress={() => setProductDraft((current) => ({ ...current, categoryId: String(category.id) }))} style={[styles.choicePill, productDraft.categoryId === String(category.id) && styles.choicePillActive]}><Text style={[styles.choicePillText, productDraft.categoryId === String(category.id) && styles.choicePillTextActive]}>{category.name}</Text></Pressable>)}</ScrollView>
           <Pressable onPress={() => setProductDraft((current) => ({ ...current, publishImmediately: !current.publishImmediately }))} style={[styles.publishToggle, productDraft.publishImmediately && styles.publishToggleActive]}><Ionicons name={productDraft.publishImmediately ? "checkmark-circle" : "ellipse-outline"} size={21} color={productDraft.publishImmediately ? "#166534" : "#68776D"} /><View style={{ flex: 1 }}><Text style={styles.publishToggleTitle}>Publish immediately</Text><Text style={styles.publishToggleText}>Approved products appear in the consumer catalogue on the next live refresh.</Text></View></Pressable>
+          {productFormError ? <Text style={{ color: "#B42318", backgroundColor: "#FEF3F2", padding: 10, borderRadius: 8, marginTop: 14 }}>{productFormError}</Text> : null}
           <Pressable onPress={submitProduct} disabled={createProduct.isPending || updateProduct.isPending} style={({ pressed }) => [styles.modalPrimaryButton, { marginTop: 16 }, pressed && styles.pressed, (createProduct.isPending || updateProduct.isPending) && { opacity: 0.6 }]}><Text style={styles.modalPrimaryText}>{createProduct.isPending || updateProduct.isPending ? "Saving…" : editingProductId === null ? "Create product" : "Save changes"}</Text><Ionicons name="checkmark" size={18} color="#14532D" /></Pressable>
         </ScrollView></View></View>
       )}
