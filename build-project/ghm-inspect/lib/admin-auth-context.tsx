@@ -23,7 +23,30 @@ interface AdminAuthContextType {
 const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefined);
 const ADMIN_SESSION_VERSION = 'admin-credentials-v2';
 
+
+
 const isValidJwtFormat = (token: string) => token.split(".").length === 3;
+
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs = 20000
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error("The server took too long to respond. Please try again.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 
 async function readAdminToken() {
   let token = await AsyncStorage.getItem("admin_token");
@@ -34,7 +57,7 @@ async function readAdminToken() {
 }
 
 async function saveAdminToken(token: string) {
-  await saveAdminToken(token);
+  await AsyncStorage.setItem("admin_token", token);
   if (typeof window !== "undefined") {
     window.localStorage.setItem("admin_token", token);
   }
@@ -114,7 +137,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const adminLogin = async (username: string, password: string) => {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${getApiBaseUrl()}/api/admin/preview-login`,
       {
         method: "POST",
@@ -140,7 +163,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Verify the signed token with the backend before storing or logging in.
-    const sessionResponse = await fetch(
+    const sessionResponse = await fetchWithTimeout(
       `${getApiBaseUrl()}/api/admin/session`,
       {
         method: "GET",
@@ -176,7 +199,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
       lastLogin: new Date().toISOString(),
     };
 
-    await AsyncStorage.setItem("admin_token", token);
+    await saveAdminToken(token);
     await AsyncStorage.setItem("admin_user", JSON.stringify(mockAdminUser));
     await AsyncStorage.setItem("admin_session_version", ADMIN_SESSION_VERSION);
 
