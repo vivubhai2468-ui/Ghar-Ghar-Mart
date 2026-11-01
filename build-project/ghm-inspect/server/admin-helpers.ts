@@ -106,6 +106,18 @@ export async function updateProductStock(productId: number, newStock: number) {
   };
 }
 
+export async function updateAdminProduct(
+  productId: number,
+  data: { name?: string; description?: string | null; price?: string; originalPrice?: string | null; discount?: number; stock?: number },
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const product = (await db.select().from(products).where(eq(products.id, productId)))[0];
+  if (!product) throw new Error("Product not found");
+  await db.update(products).set(data).where(eq(products.id, productId));
+  return { before: product, after: (await db.select().from(products).where(eq(products.id, productId)))[0] };
+}
+
 // ============= ADMIN USERS HELPERS =============
 
 export async function getAdminUsers(limit = 50, offset = 0, search = "") {
