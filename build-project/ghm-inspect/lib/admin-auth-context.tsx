@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { isValidAdminPreviewCredential } from '@/lib/admin-credentials';
+import { getApiBaseUrl } from "@/constants/oauth";
 
 export interface AdminUser {
   id: string;
@@ -23,6 +23,37 @@ interface AdminAuthContextType {
 const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefined);
 const ADMIN_SESSION_VERSION = 'admin-credentials-v2';
 
+const isValidJwtFormat = (token: string) => token.split(".").length === 3;
+
+async function readAdminToken() {
+  let token = await AsyncStorage.getItem("admin_token");
+  if (!token && typeof window !== "undefined") {
+    token = window.localStorage.getItem("admin_token");
+  }
+  return token;
+}
+
+async function saveAdminToken(token: string) {
+  await saveAdminToken(token);
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem("admin_token", token);
+  }
+}
+
+async function clearAdminSession() {
+  await AsyncStorage.multiRemove([
+    "admin_token",
+    "admin_user",
+    "admin_session_version",
+  ]);
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem("admin_token");
+    window.localStorage.removeItem("admin_user");
+    window.localStorage.removeItem("admin_session_version");
+  }
+}
+
+
 export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -33,64 +64,128 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
 
   const bootstrapAsync = async () => {
     try {
-      const adminToken = await AsyncStorage.getItem('admin_token');
-      const adminData = await AsyncStorage.getItem('admin_user');
+      const adminToken = await readAdminToken();
       const sessionVersion = await AsyncStorage.getItem('admin_session_version');
 
-      if (adminToken && adminData && sessionVersion === ADMIN_SESSION_VERSION) {
-        setAdminUser(JSON.parse(adminData));
-      } else if (adminToken || adminData) {
-        await AsyncStorage.multiRemove(['admin_token', 'admin_user', 'admin_session_version']);
+      if (!adminToken || sessionVersion !== ADMIN_SESSION_VERSION) {
+        await clearAdminSession();
+        return;
       }
-    } catch (e) {
-      console.error('Failed to restore admin session:', e);
+
+      const response = await fetch(`${getApiBaseUrl()}/api/admin/session`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        await clearAdminSession();
+        return;
+      }
+
+      const session = await response.json();
+
+      if (!session.authenticated) {
+        await clearAdminSession();
+        return;
+      }
+
+      const savedUser = await AsyncStorage.getItem('admin_user');
+      const previousUser = savedUser ? JSON.parse(savedUser) : {};
+
+      const verifiedAdmin: AdminUser = {
+        id: 'admin_001',
+        email: previousUser.email || '',
+        name: session.name || 'Ghar Ghar Mart Administrator',
+        role: 'super_admin',
+        permissions: previousUser.permissions || [],
+        lastLogin: previousUser.lastLogin || new Date().toISOString(),
+      };
+
+      await AsyncStorage.setItem('admin_user', JSON.stringify(verifiedAdmin));
+      setAdminUser(verifiedAdmin);
+    } catch (error) {
+      console.error('Failed to verify admin session:', error);
+      setAdminUser(null);
     } finally {
       setIsLoading(false);
     }
   };
 
   const adminLogin = async (username: string, password: string) => {
-    try {
-      // The preview account is deliberately restricted to the documented
-      // administrator test credentials until server-backed admin auth is enabled.
-      if (!isValidAdminPreviewCredential(username, password)) {
-        throw new Error('Invalid administrator credentials');
+    const response = await fetch(
+      `${getApiBaseUrl()}/api/admin/preview-login`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
       }
+    );
 
-      const mockAdminUser: AdminUser = {
-        id: 'admin_001',
-        email: username,
-        name: 'Ghar Ghar Mart Administrator',
-        role: 'super_admin',
-        permissions: [
-          'manage_products',
-          'manage_orders',
-          'manage_customers',
-          'manage_sellers',
-          'manage_inventory',
-          'manage_coupons',
-          'manage_banners',
-          'manage_payments',
-          'view_analytics',
-          'manage_settings',
-        ],
-        lastLogin: new Date().toISOString(),
-      };
+    const result = await response.json().catch(() => ({}));
 
-      await AsyncStorage.setItem('admin_token', 'mock_admin_token_' + Date.now());
-      await AsyncStorage.setItem('admin_user', JSON.stringify(mockAdminUser));
-      await AsyncStorage.setItem('admin_session_version', ADMIN_SESSION_VERSION);
-      setAdminUser(mockAdminUser);
-    } catch (error) {
-      throw new Error('Admin login failed');
+    if (!response.ok) {
+      throw new Error(
+        result.error || result.message || `Login failed (${response.status})`
+      );
     }
+
+    const { token } = result as { token?: string };
+
+    if (!token || !isValidJwtFormat(token)) {
+      throw new Error(
+        "The server returned an invalid administrator session. Please check the backend login deployment."
+      );
+    }
+
+    // Verify the signed token with the backend before storing or logging in.
+    const sessionResponse = await fetch(
+      `${getApiBaseUrl()}/api/admin/session`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+
+    const verifiedSession = await sessionResponse.json().catch(() => ({}));
+
+    if (!sessionResponse.ok || verifiedSession.authenticated !== true) {
+      throw new Error(
+        verifiedSession.error || "The administrator session could not be verified."
+      );
+    }
+
+    const mockAdminUser: AdminUser = {
+      id: "admin_001",
+      email: username,
+      name: "Ghar Ghar Mart Administrator",
+      role: "super_admin",
+      permissions: [
+        "manage_products",
+        "manage_orders",
+        "manage_customers",
+        "manage_sellers",
+        "manage_inventory",
+        "manage_coupons",
+        "manage_banners",
+        "manage_payments",
+        "view_analytics",
+        "manage_settings",
+      ],
+      lastLogin: new Date().toISOString(),
+    };
+
+    await AsyncStorage.setItem("admin_token", token);
+    await AsyncStorage.setItem("admin_user", JSON.stringify(mockAdminUser));
+    await AsyncStorage.setItem("admin_session_version", ADMIN_SESSION_VERSION);
+
+    setAdminUser(mockAdminUser);
   };
 
   const adminLogout = async () => {
     try {
-      await AsyncStorage.removeItem('admin_token');
-      await AsyncStorage.removeItem('admin_user');
-      await AsyncStorage.removeItem('admin_session_version');
+      await clearAdminSession();
       setAdminUser(null);
     } catch (error) {
       throw new Error('Admin logout failed');
