@@ -2,7 +2,6 @@ import "dotenv/config";
 import express from "express";
 import { rateLimit } from "express-rate-limit";
 import { createServer } from "http";
-import net from "net";
 import path from "path";
 import { randomUUID } from "crypto";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
@@ -14,25 +13,6 @@ import { createContext } from "./context";
 import { logServerError } from "./logger";
 import { getDb } from "../db";
 import { ADMIN_PREVIEW_OPEN_ID_PREFIX, sdk } from "./sdk";
-
-function isPortAvailable(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.listen(port, () => {
-      server.close(() => resolve(true));
-    });
-    server.on("error", () => resolve(false));
-  });
-}
-
-async function findAvailablePort(startPort: number = 3000): Promise<number> {
-  for (let port = startPort; port < startPort + 20; port++) {
-    if (await isPortAvailable(port)) {
-      return port;
-    }
-  }
-  throw new Error(`No available port found starting from ${startPort}`);
-}
 
 async function startServer() {
   const app = express();
@@ -191,11 +171,10 @@ async function startServer() {
     });
   });
 
-  const preferredPort = parseInt(process.env.PORT || "3000");
-  const port = await findAvailablePort(preferredPort);
+  const port = Number(process.env.PORT || 3000);
 
-  if (port !== preferredPort) {
-    console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`Invalid PORT configuration: ${process.env.PORT}`);
   }
 
   app.use((error: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -205,8 +184,8 @@ async function startServer() {
     }
   });
 
-  server.listen(port, () => {
-    console.log(`[api] server listening on port ${port}`);
+  server.listen(port, "0.0.0.0", () => {
+    console.log(`[api] server listening on 0.0.0.0:${port}`);
   });
 }
 
