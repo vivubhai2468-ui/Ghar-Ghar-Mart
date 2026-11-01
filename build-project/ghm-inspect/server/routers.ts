@@ -1138,6 +1138,43 @@ export const appRouter = router({
         return db.getPlatformStats();
       }),
 
+    categories: router({
+      seedDefaults: protectedProcedure
+        .mutation(async ({ ctx }) => {
+          if (ctx.user?.role !== "admin") {
+            throw new Error("Only admins can add default categories");
+          }
+
+          const result = await db.ensureDefaultCategories();
+
+          for (const category of result.created) {
+            await createAuditLog({
+              adminId: ctx.user.id,
+              adminName: ctx.user.name || "Administrator",
+              action: "created_category",
+              entityType: "category",
+              entityId: category.id,
+              newValue: { name: category.name, isActive: true },
+              status: "success",
+            });
+          }
+
+          for (const category of result.reactivated) {
+            await createAuditLog({
+              adminId: ctx.user.id,
+              adminName: ctx.user.name || "Administrator",
+              action: "reactivated_category",
+              entityType: "category",
+              entityId: category.id,
+              newValue: { name: category.name, isActive: true },
+              status: "success",
+            });
+          }
+
+          return result;
+        }),
+    }),
+
     banners: router({
       list: protectedProcedure.query(({ ctx }) => {
         if (ctx.user?.role !== "admin") throw new Error("Only administrators can manage Home banners");

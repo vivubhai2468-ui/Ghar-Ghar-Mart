@@ -321,6 +321,59 @@ export async function getCategoryById(id: number) {
 /**
  * Get all categories with product count for each category
  */
+export async function ensureDefaultCategories() {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not configured");
+
+  const defaultNames = [
+    "Fruits & Vegetables",
+    "Dairy, Bread & Eggs",
+    "Atta, Rice & Pulses",
+    "Oil, Ghee & Masala",
+    "Snacks & Munchies",
+    "Cold Drinks & Beverages",
+    "Chocolates & Sweets",
+    "Instant & Ready-to-Eat",
+    "Personal Care",
+    "Household Essentials",
+    "Cleaning & Laundry",
+    "Baby & Pet Care",
+  ];
+
+  const existing = await db.select().from(categories);
+  const byName = new Map(
+    existing.map((category: any) => [String(category.name).trim().toLowerCase(), category])
+  );
+
+  const created: Array<{ name: string; id: number }> = [];
+  const reactivated: Array<{ name: string; id: number }> = [];
+
+  for (const name of defaultNames) {
+    const match = byName.get(name.toLowerCase()) as any;
+
+    if (match) {
+      if (!match.isActive) {
+        await db.update(categories)
+          .set({ isActive: true })
+          .where(eq(categories.id, match.id));
+        reactivated.push({ name, id: match.id });
+      }
+      continue;
+    }
+
+    await db.insert(categories).values({ name, isActive: true });
+    const inserted = await db.select().from(categories).where(eq(categories.name, name));
+    if (inserted[0]) created.push({ name, id: inserted[0].id });
+  }
+
+  return {
+    success: true,
+    created,
+    reactivated,
+    total: defaultNames.length,
+  };
+}
+
 export async function getCategoriesWithCounts(pincode?: string) {
   const db = await getDb();
   if (!db) return [];

@@ -139,6 +139,25 @@ export default function AdminDashboardScreen() {
     },
     onError: (error) => Alert.alert("Product was not updated", getUserFacingError(error, "Please check the product details and try again.")),
   });
+  const seedDefaultCategories = trpc.admin.categories.seedDefaults.useMutation({
+    onSuccess: async (result) => {
+      await Promise.all([
+        utils.categories.list.invalidate(),
+        utils.categories.listWithCounts.invalidate(),
+      ]);
+      const createdCount = result.created.length;
+      const reactivatedCount = result.reactivated.length;
+      Alert.alert(
+        "Categories ready",
+        `${createdCount} added, ${reactivatedCount} reactivated. ${result.total} default categories are ready.`
+      );
+    },
+    onError: (error) => Alert.alert(
+      "Could not add categories",
+      getUserFacingError(error, "Please try again.")
+    ),
+  });
+
   const createProduct = trpc.admin.products.create.useMutation({
     onSuccess: async (product) => {
       await Promise.all([
@@ -507,6 +526,26 @@ export default function AdminDashboardScreen() {
             <Text style={styles.textActionLabel}>Retry</Text>
           </Pressable>
         </View>
+      ) : null}
+      {canManageProducts ? (
+        <Pressable
+          onPress={() => seedDefaultCategories.mutate()}
+          disabled={seedDefaultCategories.isPending}
+          style={({ pressed }) => [styles.fullWidthAction, pressed && styles.pressed]}
+        >
+          <View style={styles.fullWidthActionIcon}>
+            <Ionicons name="grid-outline" size={21} color="#14532D" />
+          </View>
+          <View style={styles.fullWidthActionCopy}>
+            <Text style={styles.fullWidthActionTitle}>
+              {seedDefaultCategories.isPending ? "Adding categories…" : "Add default grocery categories"}
+            </Text>
+            <Text style={styles.fullWidthActionText}>
+              {categoriesQuery.data?.length ?? 0} active categories · Add missing grocery categories
+            </Text>
+          </View>
+          <Ionicons name="arrow-forward" size={19} color="#14532D" />
+        </Pressable>
       ) : null}
       {canManageProducts ? <Pressable onPress={openProductCreator} style={({ pressed }) => [styles.fullWidthAction, pressed && styles.pressed]}><View style={styles.fullWidthActionIcon}><Ionicons name="add-circle" size={21} color="#14532D" /></View><View style={styles.fullWidthActionCopy}><Text style={styles.fullWidthActionTitle}>Add product to the app</Text><Text style={styles.fullWidthActionText}>Publish an approved product to the live shopper catalogue.</Text></View><Ionicons name="arrow-forward" size={19} color="#14532D" /></Pressable> : null}
       <View style={styles.catalogueSummary}><View><Text style={styles.catalogueSummaryValue}>{products.length}</Text><Text style={styles.catalogueSummaryLabel}>active product records</Text></View><View style={styles.catalogueSummaryDivider} /><View><Text style={[styles.catalogueSummaryValue, { color: "#A76F00" }]}>{lowStockCount}</Text><Text style={styles.catalogueSummaryLabel}>need attention</Text></View><Ionicons name="sparkles" size={24} color="#C88700" /></View>
