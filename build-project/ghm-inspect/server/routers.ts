@@ -234,7 +234,6 @@ export const appRouter = router({
           name: z.string().trim().min(2).max(100),
           phone: z.string().min(10).max(20),
           email: z.string().trim().email().max(320),
-          aadhaarNumber: z.string().regex(/^\\d{12}$/),
           password: z.string().min(8).max(128),
         }))
         .mutation(async ({ input }) => {
