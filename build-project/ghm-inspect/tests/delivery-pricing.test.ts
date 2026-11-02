@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import { calculateDeliveryCharge, calculateOrderTotal, DEFAULT_DELIVERY_PRICING, POOR_PEOPLE_DONATION } from "../shared/delivery-pricing";
 
 describe("delivery pricing", () => {
-  it("uses ₹10 for the first 2 km and ₹5 for each additional started kilometre", () => {
-    expect(DEFAULT_DELIVERY_PRICING).toEqual({ baseDistanceKm: 2, baseCharge: 10, additionalChargePerKm: 5 });
+  it("uses a flat ₹10 delivery charge", () => {
+    expect(DEFAULT_DELIVERY_PRICING).toEqual({ baseDistanceKm: 0, baseCharge: 10, additionalChargePerKm: 0 });
     expect(calculateDeliveryCharge(2).deliveryCharge).toBe(10);
-    expect(calculateDeliveryCharge(2.01).deliveryCharge).toBe(15);
-    expect(calculateDeliveryCharge(4).deliveryCharge).toBe(20);
+    expect(calculateDeliveryCharge(2.01).deliveryCharge).toBe(10);
+    expect(calculateDeliveryCharge(4).deliveryCharge).toBe(10);
   });
-  it.each([[0.5, 10], [2, 10], [2.1, 15], [2.9, 15], [3, 15], [3.1, 20], [4.2, 25], [5, 25], [6, 30], [10, 50]])("charges %s km at ₹%s", (distance, charge) => {
-    expect(calculateDeliveryCharge(distance).deliveryCharge).toBe(charge);
+  it.each([0.5, 2, 2.1, 2.9, 3, 3.1, 4.2, 5, 6, 10])("charges ₹10 for %s km", (distance) => {
+    expect(calculateDeliveryCharge(distance).deliveryCharge).toBe(10);
   });
   it("adds the ₹2 donation to the checkout amount", () => {
     expect(POOR_PEOPLE_DONATION).toBe(2);

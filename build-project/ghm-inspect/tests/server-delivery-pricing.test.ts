@@ -27,12 +27,12 @@ describe("server delivery price quotes", () => {
     }));
   });
 
-  it("quotes ₹10 through 2 km and adds ₹5 for each started kilometre beyond it", async () => {
+  it("quotes a flat ₹10 regardless of route distance", async () => {
     await expect(quoteDeliveryCharge({ sellerId: 12, deliveryLatitude: 19.08, deliveryLongitude: 72.9 }))
       .resolves.toMatchObject({ distanceKm: 2, baseCharge: 10, additionalDistanceKm: 0, deliveryCharge: 10 });
 
     mocks.routeDistanceMeters = 2010;
     await expect(quoteDeliveryCharge({ sellerId: 12, deliveryLatitude: 19.081, deliveryLongitude: 72.9 }))
-      .resolves.toMatchObject({ distanceKm: 2.01, baseCharge: 10, additionalChargePerKm: 5, additionalDistanceKm: 1, deliveryCharge: 15 });
+      .resolves.toMatchObject({ distanceKm: 2.01, baseCharge: 10, additionalChargePerKm: 0, additionalDistanceKm: 0, deliveryCharge: 10 });
   });
 });

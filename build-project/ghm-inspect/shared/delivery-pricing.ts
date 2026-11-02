@@ -1,6 +1,6 @@
 export type DeliveryPricingConfig = { baseDistanceKm: number; baseCharge: number; additionalChargePerKm: number };
 export type DeliveryChargeQuote = DeliveryPricingConfig & { distanceKm: number; additionalDistanceKm: number; deliveryCharge: number };
-export const DEFAULT_DELIVERY_PRICING: DeliveryPricingConfig = { baseDistanceKm: 2, baseCharge: 10, additionalChargePerKm: 5 };
+export const DEFAULT_DELIVERY_PRICING: DeliveryPricingConfig = { baseDistanceKm: 0, baseCharge: 10, additionalChargePerKm: 0 };
 export const POOR_PEOPLE_DONATION = 2;
 
 export function calculateOrderTotal(input: { subtotal: number; deliveryCharge: number; tax?: number; discount?: number }): number {
@@ -11,8 +11,6 @@ export function calculateOrderTotal(input: { subtotal: number; deliveryCharge: n
 
 export function calculateDeliveryCharge(distanceKm: number, config: DeliveryPricingConfig = DEFAULT_DELIVERY_PRICING): DeliveryChargeQuote {
   if (!Number.isFinite(distanceKm) || distanceKm < 0) throw new Error("Delivery distance must be a finite non-negative number");
-  if (!Number.isFinite(config.baseDistanceKm) || config.baseDistanceKm <= 0 || !Number.isFinite(config.baseCharge) || config.baseCharge < 0 || !Number.isFinite(config.additionalChargePerKm) || config.additionalChargePerKm < 0) throw new Error("Delivery pricing configuration is invalid");
-  const excess = Math.max(0, distanceKm - config.baseDistanceKm);
-  const additionalDistanceKm = excess > 0 ? Math.ceil(excess - 1e-9) : 0;
-  return { ...config, distanceKm, additionalDistanceKm, deliveryCharge: config.baseCharge + additionalDistanceKm * config.additionalChargePerKm };
+  if (!Number.isFinite(config.baseDistanceKm) || config.baseDistanceKm < 0 || !Number.isFinite(config.baseCharge) || config.baseCharge < 0 || !Number.isFinite(config.additionalChargePerKm) || config.additionalChargePerKm < 0) throw new Error("Delivery pricing configuration is invalid");
+  return { ...config, distanceKm, additionalDistanceKm: 0, deliveryCharge: config.baseCharge };
 }

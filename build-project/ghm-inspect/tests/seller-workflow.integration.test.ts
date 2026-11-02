@@ -192,7 +192,7 @@ describe("seller onboarding and operations lifecycle", () => {
     const newOrderAlert = (await sellerCaller.notifications.list()).find((notification: any) => notification.type === "seller_new_order") as any;
     expect(newOrderAlert).toMatchObject({ userId: seller.id, isRead: false, relatedProductId: null });
     const adminOrders = await adminCaller.admin.orders.list({ limit: 100 });
-    expect(adminOrders).toEqual(expect.arrayContaining([expect.objectContaining({ orderNumber: expect.stringContaining("GGM-TEST-"), userId: customer.id, sellerId: seller.id, deliveryDistanceKm: "3.00", shippingCost: "15.00", donationAmount: "2.00", total: "262.00" })]));
+    expect(adminOrders).toEqual(expect.arrayContaining([expect.objectContaining({ orderNumber: expect.stringContaining("GGM-TEST-"), userId: customer.id, sellerId: seller.id, deliveryDistanceKm: "3.00", shippingCost: "10.00", donationAmount: "2.00", total: "257.00" })]));
     expect(await adminCaller.admin.dashboard()).toMatchObject({ totalUsers: expect.any(Number), totalOrders: expect.any(Number), totalProducts: expect.any(Number), activeUsers: expect.any(Number) });
     expect(newOrderAlert.relatedOrderId).toBeTypeOf("number");
 
@@ -244,9 +244,9 @@ describe("seller onboarding and operations lifecycle", () => {
     await partnerCaller.deliveryPartner.complete({ orderId: deliveryOrderId, code: deliveryOtp.code });
     expect((await getDeliveryOrder(deliveryOrderId))?.status).toBe("delivered");
     const partnerEarnings = await partnerCaller.deliveryPartner.earnings();
-    expect(partnerEarnings.find((earning: any) => earning.orderId === deliveryOrderId)).toMatchObject({ partnerId: partner.id, deliveryFee: "15.00", netAmount: "15.00", status: "earned" });
+    expect(partnerEarnings.find((earning: any) => earning.orderId === deliveryOrderId)).toMatchObject({ partnerId: partner.id, deliveryFee: "10.00", netAmount: "10.00", status: "earned" });
     const partnerSummary = await partnerCaller.deliveryPartner.routeSummary();
-    expect(partnerSummary).toMatchObject({ deliveredToday: 1, activeDeliveries: 0, todayEarnings: 15, totalEarnings: 15 });
+    expect(partnerSummary).toMatchObject({ deliveredToday: 1, activeDeliveries: 0, todayEarnings: 10, totalEarnings: 10 });
     expect(await sellerCaller.seller.dashboard()).toMatchObject({ totalOrders: expect.any(Number), totalProducts: expect.any(Number), totalEarnings: expect.any(Number) });
     expect(Array.isArray(await sellerCaller.seller.earnings())).toBe(true);
 
