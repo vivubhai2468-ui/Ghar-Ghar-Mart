@@ -1119,6 +1119,42 @@ export async function createDirectCustomerAccount(input: { name: string; phone: 
   return getUserByPhone(phone);
 }
 
+/** Creates a seller application without SMS verification. Existing phone accounts cannot be claimed. */
+export async function createSellerApplication(input: {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  shopName?: string;
+  aadhaarNumber: string;
+  password: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const phone = normalizeIndianPhone(input.phone);
+  const existing = await getUserByPhone(phone);
+  if (existing) {
+    throw new Error("An account already exists for this mobile number. Please sign in or contact support.");
+  }
+
+  const aadhaar = normalizeAadhaar(input.aadhaarNumber);
+  await db.insert(users).values({
+    openId: `seller-application:${phone}`,
+    name: input.name.trim(),
+    email: input.email.trim().toLowerCase(),
+    phone,
+    address: input.address.trim(),
+    loginMethod: "phone_password",
+    passwordHash: await hashPartnerPassword(input.password),
+    role: "seller",
+    shopName: input.shopName?.trim() || `${input.name.trim()} Store`,
+    shopStatus: "pending",
+    aadhaarHash: createHash("sha256").update(aadhaar).digest("hex"),
+    aadhaarLast4: aadhaar.slice(-4),
+  });
+  return getUserByPhone(phone);
+}
+
 /** Signs in a direct customer account without OTP. */
 export async function signInDirectCustomer(input: { phone: string; password: string }) {
   const user = await getUserByPhone(input.phone);
