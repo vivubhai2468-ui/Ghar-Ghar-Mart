@@ -207,6 +207,30 @@ export const appRouter = router({
         }),
     }),
 
+    partnerRegistration: router({
+      submitSellerApplication: publicProcedure
+        .input(z.object({
+          name: z.string().trim().min(2).max(100),
+          phone: z.string().min(10).max(20),
+          email: z.string().trim().email().max(320),
+          address: z.string().trim().min(5).max(500),
+          shopName: z.string().trim().min(2).max(255).optional(),
+          aadhaarNumber: z.string().regex(/^\d{12}$/),
+          password: z.string().min(8).max(128),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          const user = await db.createSellerApplication(input);
+          if (!user) throw new Error("Seller application could not be created");
+          const sessionToken = await sdk.createSessionToken(user.openId, { name: user.name || "Ghar Ghar Mart seller" });
+          const cookieOptions = getSessionCookieOptions(ctx.req);
+          ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: 365 * 24 * 60 * 60 * 1000 });
+          return {
+            sessionToken,
+            user: { id: user.id, name: user.name, phone: user.phone, address: user.address, role: "seller" as const, sellerStatus: user.shopStatus },
+          };
+        }),
+    }),
+
     partnerPassword: router({
       requestPasswordReset: publicProcedure
         .input(z.object({
