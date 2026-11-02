@@ -13,7 +13,7 @@ import { storagePut } from "./storage";
 import { getRoadRoute } from "./routing";
 import { reverseGeocodeIndianAddress, searchIndianAddresses } from "./geocoding";
 import { quoteDeliveryCharge } from "./delivery-pricing";
-import { calculateOrderTotal, POOR_PEOPLE_DONATION } from "../shared/delivery-pricing";
+import { calculateOrderTotal, DEFAULT_DELIVERY_PRICING, POOR_PEOPLE_DONATION } from "../shared/delivery-pricing";
 import { assertPasswordResetEmailConfigured, sendPasswordResetEmail } from "./email";
 
 const LOW_STOCK_THRESHOLD = 5;
@@ -595,11 +595,11 @@ export const appRouter = router({
         })),
       }))
       .mutation(async ({ ctx, input }) => {
-        const quote = await quoteDeliveryCharge({ sellerId: input.sellerId, deliveryLatitude: input.deliveryLatitude, deliveryLongitude: input.deliveryLongitude });
+        const deliveryCharge = DEFAULT_DELIVERY_PRICING.baseCharge;
         const subtotal = input.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
         const tax = input.tax ?? 0;
         const discount = input.discount ?? 0;
-        const total = calculateOrderTotal({ subtotal, tax, deliveryCharge: quote.deliveryCharge, discount });
+        const total = calculateOrderTotal({ subtotal, tax, deliveryCharge, discount });
         const orderId = await db.createOrder({
           userId: ctx.user!.id,
           sellerId: input.sellerId,
@@ -611,8 +611,8 @@ export const appRouter = router({
           deliveryLongitude: input.deliveryLongitude.toString(),
           subtotal: subtotal.toFixed(2),
           tax: tax.toFixed(2),
-          shippingCost: quote.deliveryCharge.toFixed(2),
-          deliveryDistanceKm: quote.distanceKm.toFixed(2),
+          shippingCost: deliveryCharge.toFixed(2),
+          deliveryDistanceKm: "0.00",
           discount: discount.toFixed(2),
           donationAmount: POOR_PEOPLE_DONATION.toFixed(2),
           total: total.toFixed(2),
@@ -652,8 +652,8 @@ export const appRouter = router({
           orderId,
           deliveryOtp,
           subtotal,
-          deliveryCharge: quote.deliveryCharge,
-          deliveryDistanceKm: quote.distanceKm,
+          deliveryCharge,
+          deliveryDistanceKm: 0,
           total,
         };
       }),

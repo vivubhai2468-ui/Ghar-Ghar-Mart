@@ -93,7 +93,6 @@ export default function CheckoutScreen() {
   const sellerId = Number.isInteger(cartSellerId) && cartSellerId > 0
     ? cartSellerId
     : Number(cartProductQuery.data?.sellerId ?? 0);
-  const deliveryQuoteQuery = trpc.delivery.quote.useQuery({ sellerId: sellerId || 1, deliveryLatitude: selectedAddress?.latitude ?? 0, deliveryLongitude: selectedAddress?.longitude ?? 0 }, { enabled: Boolean(user && sellerId && selectedAddress), refetchOnWindowFocus: true });
   const deliveryCharge = DEFAULT_DELIVERY_PRICING.baseCharge;
   const total = calculateOrderTotal({ subtotal, deliveryCharge });
 

@@ -378,35 +378,38 @@ export async function ensureDefaultCategories() {
 export async function getCategoriesWithCounts(pincode?: string) {
   const db = await getDb();
   if (!db) return [];
-  
+
   const allCategories = await db
     .select()
     .from(categories)
     .where(eq(categories.isActive, true));
-  
-  // Fetch product counts for each category
-  const categoriesWithCounts = await Promise.all(
-    allCategories.map(async (cat: any) => {
-      const categoryProducts = await db
-        .select()
-        .from(products)
-        .where(
-          and(
-            eq(products.categoryId, cat.id),
-            isNotNull(products.sellerId),
-            eq(products.isActive, true),
-            eq(products.approvalStatus, "approved")
-          )
-        );
-      const visibleProducts = await applyRegionalAvailability(categoryProducts, pincode);
-      return {
-        ...cat,
-        productCount: visibleProducts.length,
-      };
+
+  const allProducts = await db
+    .select({
+      id: products.id,
+      categoryId: products.categoryId,
+      stock: products.stock,
     })
-  );
-  
-  return categoriesWithCounts;
+    .from(products)
+    .where(
+      and(
+        isNotNull(products.sellerId),
+        eq(products.isActive, true),
+        eq(products.approvalStatus, "approved")
+      )
+    );
+
+  const visibleProducts = await applyRegionalAvailability(allProducts, pincode);
+  const counts = new Map<number, number>();
+
+  for (const product of visibleProducts) {
+    counts.set(product.categoryId, (counts.get(product.categoryId) ?? 0) + 1);
+  }
+
+  return allCategories.map((category: any) => ({
+    ...category,
+    productCount: counts.get(category.id) ?? 0,
+  }));
 }
 
 /**
