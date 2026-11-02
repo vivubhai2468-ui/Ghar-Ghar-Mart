@@ -8,24 +8,18 @@ import { router, useLocalSearchParams } from "expo-router";
 import { ProductImage } from "@/components/product-image";
 import { useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { useAuth } from "@/lib/auth-context";
-import { trpc } from "@/lib/trpc";
+import { calculateOrderTotal, DEFAULT_DELIVERY_PRICING, POOR_PEOPLE_DONATION } from "@/shared/delivery-pricing";
 
 export default function CartScreen() {
   const { couponCode } = useLocalSearchParams<{ couponCode?: string | string[] }>();
   const { items, getTotalItems, getSubtotal, removeItem, updateQuantity } = useCart();
-  const { user } = useAuth();
   const { appliedCoupon } = useCoupon();
   const [couponDiscount, setCouponDiscount] = useState(0);
 
   const subtotal = getSubtotal();
   const discount = appliedCoupon ? calculateDiscount(appliedCoupon, subtotal) : couponDiscount;
-  const addressesQuery = trpc.addresses.list.useQuery(undefined, { enabled: Boolean(user && user.role !== "guest") });
-  const address = (addressesQuery.data ?? [])[0] as { latitude?: number | string; longitude?: number | string } | undefined;
-  const sellerId = Number(items[0]?.sellerId ?? 0);
-  const quoteQuery = trpc.delivery.quote.useQuery({ sellerId: sellerId || 1, deliveryLatitude: Number(address?.latitude ?? 0), deliveryLongitude: Number(address?.longitude ?? 0) }, { enabled: Boolean(sellerId && address), refetchOnWindowFocus: true });
-  const deliveryCharge = quoteQuery.data?.deliveryCharge;
-  const total = deliveryCharge === undefined ? null : Math.max(0, subtotal + deliveryCharge - discount);
+  const deliveryCharge = DEFAULT_DELIVERY_PRICING.baseCharge;
+  const total = calculateOrderTotal({ subtotal, deliveryCharge, discount });
 
   const handleContinueShopping = () => {
     router.back();
@@ -166,10 +160,15 @@ export default function CartScreen() {
           <View className="flex-row justify-between mb-3">
             <Text className="text-sm text-muted">Delivery Charge</Text>
             <Text className="text-sm font-semibold text-foreground">
-              {deliveryCharge === undefined ? "—" : `₹${deliveryCharge.toFixed(0)}`}
+              ₹{deliveryCharge.toFixed(0)}
             </Text>
           </View>
-          <Text className="text-xs text-muted mb-3">{quoteQuery.isFetching ? "Calculating actual road distance…" : quoteQuery.error ? "Delivery charge unavailable until the route can be calculated." : quoteQuery.data ? `Distance: ${quoteQuery.data.distanceKm.toFixed(1)} km` : "Select a delivery address at checkout."}</Text>
+          <Text className="text-xs text-muted mb-3">A fixed ₹10 delivery charge applies to every order.</Text>
+
+          <View className="flex-row justify-between mb-3">
+            <Text className="text-sm text-muted">Donation for people in need</Text>
+            <Text className="text-sm font-semibold text-foreground">₹{POOR_PEOPLE_DONATION.toFixed(0)}</Text>
+          </View>
 
           {/* Discount */}
           {discount > 0 && (
@@ -188,7 +187,7 @@ export default function CartScreen() {
           <View className="flex-row justify-between">
             <Text className="text-base font-bold text-foreground">Total</Text>
             <Text className="text-base font-bold text-primary">
-              {total === null ? "—" : `₹${total.toFixed(0)}`}
+              {`₹${total.toFixed(0)}`}
             </Text>
           </View>
         </View>
