@@ -35,4 +35,13 @@ describe("server delivery price quotes", () => {
     await expect(quoteDeliveryCharge({ sellerId: 12, deliveryLatitude: 19.081, deliveryLongitude: 72.9 }))
       .resolves.toMatchObject({ distanceKm: 2.01, baseCharge: 10, additionalChargePerKm: 0, additionalDistanceKm: 0, deliveryCharge: 10 });
   });
+
+  it("falls back to the fixed charge when the store location is not configured", async () => {
+    mocks.getUserById.mockResolvedValue({ id: 12, role: "seller", address: null });
+
+    await expect(quoteDeliveryCharge({ sellerId: 12, deliveryLatitude: 19.08, deliveryLongitude: 72.9 }))
+      .resolves.toMatchObject({ distanceKm: 0, deliveryCharge: 10, provider: "fixed" });
+    expect(mocks.searchIndianAddresses).not.toHaveBeenCalled();
+    expect(mocks.getRoadRoute).not.toHaveBeenCalled();
+  });
 });
