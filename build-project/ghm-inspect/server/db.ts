@@ -1155,6 +1155,39 @@ export async function createSellerApplication(input: {
   return getUserByPhone(phone);
 }
 
+export async function createDeliveryPartnerApplication(input: {
+  name: string;
+  phone: string;
+  email: string;
+  aadhaarNumber: string;
+  password: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const phone = normalizeIndianPhone(input.phone);
+  const existing = await getUserByPhone(phone);
+  if (existing) {
+    throw new Error("An account already exists for this mobile number. Please sign in or contact support.");
+  }
+
+  const aadhaar = normalizeAadhaar(input.aadhaarNumber);
+  await db.insert(users).values({
+    openId: `delivery-application:${phone}`,
+    name: input.name.trim(),
+    email: input.email.trim().toLowerCase(),
+    phone,
+    address: "Delivery partner profile",
+    loginMethod: "phone_password",
+    passwordHash: await hashPartnerPassword(input.password),
+    role: "delivery_partner",
+    deliveryPartnerStatus: "pending",
+    isActive: false,
+    aadhaarHash: createHash("sha256").update(aadhaar).digest("hex"),
+    aadhaarLast4: aadhaar.slice(-4),
+  });
+  return getUserByPhone(phone);
+}
+
 /** Signs in a direct customer account without OTP. */
 export async function signInDirectCustomer(input: { phone: string; password: string }) {
   const user = await getUserByPhone(input.phone);
