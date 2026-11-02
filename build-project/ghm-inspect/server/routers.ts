@@ -4,7 +4,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router, protectedProcedure, adminProcedure } from "./_core/trpc";
 import * as db from "./db";
-import { createAuditLog, getAdminOrders, getAdminProducts, getAdminSellers, getAdminUsers, getPendingSellers, updateAdminProduct, updateAdminSellerRecord, updateAdminUserRecord, updateOrderStatus, updateProductStatus, updateProductStock, updateSellerStatus } from "./admin-helpers";
+import { createAuditLog, getAdminOrders, getAdminProducts, getAdminProductById, getAdminSellers, getAdminUsers, getPendingSellers, updateAdminProduct, updateAdminSellerRecord, updateAdminUserRecord, updateOrderStatus, updateProductStatus, updateProductStock, updateSellerStatus } from "./admin-helpers";
 import { sdk } from "./_core/sdk";
 import { sendAuthenticationOtp } from "./auth-sms";
 import { sendDeliveryPush } from "./delivery-push";
@@ -1414,7 +1414,6 @@ export const appRouter = router({
 
       create: protectedProcedure
         .input(z.object({
-          sellerId: z.number().int().positive(),
           categoryId: z.number().int().positive(),
           name: z.string().trim().min(2).max(255),
           description: z.string().trim().max(2000).optional(),
@@ -1428,13 +1427,11 @@ export const appRouter = router({
         }))
         .mutation(async ({ ctx, input }) => {
           if (ctx.user?.role !== "admin") throw new Error("Only admins can create products");
-          const seller = await db.getUserById(input.sellerId);
-          if (!seller || seller.role !== "seller") throw new Error("Choose a valid seller account");
-          if (!seller.isActive || seller.shopStatus !== "approved") throw new Error("Products can only be published for an approved active seller");
           const category = await db.getCategoryById(input.categoryId);
           if (!category || !category.isActive) throw new Error("Choose an active category");
+
           const productId = await db.createProduct({
-            sellerId: input.sellerId,
+            sellerId: null,
             categoryId: input.categoryId,
             name: input.name,
             description: input.description || null,
@@ -1445,11 +1442,67 @@ export const appRouter = router({
             images: input.images ?? [],
             isFeatured: input.isFeatured ?? false,
             approvalStatus: input.publishImmediately ? "approved" : "pending",
-            isActive: input.publishImmediately,
+            isActive: false,
             ...(input.publishImmediately ? { moderatedBy: ctx.user.id, moderatedAt: new Date() } : {}),
           } as any);
-          await createAuditLog({ adminId: ctx.user.id, adminName: ctx.user.name || "Administrator", action: input.publishImmediately ? "created_and_published_product" : "created_product_submission", entityType: "product", entityId: Number(productId), newValue: { ...input, approvalStatus: input.publishImmediately ? "approved" : "pending" }, status: "success" });
-          return db.getProductById(Number(productId));
+
+          await createAuditLog({
+            adminId: ctx.user.id,
+            adminName: ctx.user.name || "Administrator",
+            action: "created_unassigned_product",
+            entityType: "product",
+            entityId: Number(productId),
+            newValue: {
+              ...input,
+              sellerId: null,
+              isActive: false,
+              approvalStatus: input.publishImmediately ? "approved" : "pending",
+            },
+            status: "success",
+          });
+
+          return getAdminProductById(Number(productId));
+        }),
+
+      assignSeller: protectedProcedure
+        .input(z.object({
+          productId: z.number().int().positive(),
+          sellerId: z.number().int().positive(),
+        }))
+        .mutation(async ({ ctx, input }) => {
+          if (ctx.user?.role !== "admin") throw new Error("Only admins can assign products to sellers");
+
+          const product = await getAdminProductById(input.productId);
+          if (!product) throw new Error("Product not found");
+          if (product.sellerId != null) throw new Error("This product is already assigned to a seller");
+
+          const seller = await db.getUserById(input.sellerId);
+          if (!seller || seller.role !== "seller") throw new Error("Choose a valid seller account");
+          if (!seller.isActive || seller.shopStatus !== "approved") {
+            throw new Error("Products can only be assigned to an approved active seller");
+          }
+
+          const result = await updateAdminProduct(input.productId, {
+            sellerId: input.sellerId,
+            isActive: product.approvalStatus === "approved",
+          });
+
+          await createAuditLog({
+            adminId: ctx.user.id,
+            adminName: ctx.user.name || "Administrator",
+            action: "assigned_product_to_seller",
+            entityType: "product",
+            entityId: input.productId,
+            oldValue: { sellerId: null, isActive: product.isActive },
+            newValue: {
+              sellerId: input.sellerId,
+              sellerName: seller.shopName || seller.name,
+              isActive: product.approvalStatus === "approved",
+            },
+            status: "success",
+          });
+
+          return result.after;
         }),
 
       updateStatus: protectedProcedure

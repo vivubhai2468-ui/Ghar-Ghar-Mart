@@ -111,9 +111,14 @@ describe("seller onboarding and operations lifecycle", () => {
     const liveSellerApplications = await adminCaller.admin.sellers.pending();
     expect(liveSellerApplications.some((record: any) => record.id === seller.id)).toBe(false);
 
-    const adminPublishedProduct = await adminCaller.admin.products.create({ sellerId: seller.id, categoryId: (await getCategories())[0].id, name: "Admin Live Bananas", description: "Published directly by operations", price: 79, stock: 24, publishImmediately: true });
-    expect(adminPublishedProduct).toMatchObject({ name: "Admin Live Bananas", sellerId: seller.id, approvalStatus: "approved", isActive: true });
-    expect((await getProducts(100, 0)).some((product: any) => product.id === adminPublishedProduct.id && product.name === "Admin Live Bananas")).toBe(true);
+    await adminCaller.admin.categories.seedDefaults();
+    const adminCreatedProduct = await adminCaller.admin.products.create({ categoryId: (await getCategories())[0].id, name: "Admin Live Bananas", description: "Created before seller assignment", price: 79, stock: 24, publishImmediately: true });
+    expect(adminCreatedProduct).toMatchObject({ name: "Admin Live Bananas", sellerId: null, approvalStatus: "approved", isActive: false });
+    expect((await getProducts(100, 0)).some((product: any) => product.id === adminCreatedProduct.id)).toBe(false);
+
+    const adminAssignedProduct = await adminCaller.admin.products.assignSeller({ productId: adminCreatedProduct.id, sellerId: seller.id });
+    expect(adminAssignedProduct).toMatchObject({ name: "Admin Live Bananas", sellerId: seller.id, approvalStatus: "approved", isActive: true });
+    expect((await getProducts(100, 0)).some((product: any) => product.id === adminCreatedProduct.id && product.name === "Admin Live Bananas")).toBe(true);
 
     await sellerCaller.seller.profile.update({
       shopName: "Lifecycle Fresh Mart",

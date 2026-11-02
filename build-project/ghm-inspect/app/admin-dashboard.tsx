@@ -12,6 +12,7 @@ import {
   View,
   Linking,
   Image,
+  Platform,
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
@@ -48,7 +49,7 @@ type Seller = {
 type AdminProduct = { id: number; name: string; category: string; price: number; stock: number; status: string; builtIn?: boolean };
 type AdminPerson = { id: number; name: string; email: string; orders: number; tag: string };
 type LiveOrder = { id: number; orderNumber: string; userId: number; total: string | number; shippingCost?: string | number | null; deliveryDistanceKm?: string | number | null; paymentStatus: "pending" | "completed" | "failed"; paymentProofUrl?: string | null; status: OrderStatus; createdAt: Date | string };
-type LiveProduct = { id: number; name: string; categoryId: number; description?: string | null; price: string | number; originalPrice?: string | number | null; discount?: number | null; stock: number; isActive: boolean; approvalStatus?: "pending" | "approved" | "rejected"; builtIn?: boolean };
+type LiveProduct = { id: number; name: string; sellerId?: number | null; categoryId: number; description?: string | null; price: string | number; originalPrice?: string | number | null; discount?: number | null; stock: number; isActive: boolean; approvalStatus?: "pending" | "approved" | "rejected"; builtIn?: boolean };
 type LiveSeller = {
   id: number;
   name: string | null;
@@ -63,7 +64,7 @@ type LiveSeller = {
 };
 type LiveCustomer = { id: number; name: string | null; email: string | null; phone: string | null; isActive: boolean };
 type LiveCategory = { id: number; name: string; isActive: boolean };
-type ProductDraft = { sellerId: string; categoryId: string; name: string; description: string; price: string; originalPrice: string; discount: string; stock: string; publishImmediately: boolean };
+type ProductDraft = { categoryId: string; name: string; description: string; price: string; originalPrice: string; discount: string; stock: string; publishImmediately: boolean };
 
 const TAB_ITEMS: Array<{ id: TabId; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
   { id: "overview", label: "Overview", icon: "grid-outline" },
@@ -75,6 +76,7 @@ const TAB_ITEMS: Array<{ id: TabId; label: string; icon: keyof typeof Ionicons.g
 
 const STATUS_COLORS: Record<string, { background: string; text: string; dot: string }> = {
   pending: { background: "#FFF4C6", text: "#9A6700", dot: "#F59E0B" },
+  unassigned: { background: "#FFF4C6", text: "#9A6700", dot: "#F59E0B" },
   confirmed: { background: "#E0F2FE", text: "#0369A1", dot: "#0EA5E9" },
   shipped: { background: "#F0E8FF", text: "#6D28D9", dot: "#8B5CF6" },
   delivered: { background: "#DDF6E8", text: "#167044", dot: "#22C55E" },
@@ -120,7 +122,7 @@ export default function AdminDashboardScreen() {
   const utils = trpc.useUtils();
   const liveQueryOptions = { enabled: Boolean(adminUser), refetchInterval: 15000, refetchOnWindowFocus: true };
   const ordersQuery = trpc.admin.orders.list.useQuery({ limit: 100 }, { ...liveQueryOptions, refetchInterval: 2000, staleTime: 0 });
-  const productsQuery = trpc.admin.products.list.useQuery({ limit: 1000 }, { ...liveQueryOptions, enabled: Boolean(adminUser) && (activeTab === "overview" || activeTab === "catalogue") });
+  const productsQuery = trpc.admin.products.list.useQuery({ limit: 1000 }, { ...liveQueryOptions, enabled: Boolean(adminUser) && (activeTab === "overview" || activeTab === "catalogue" || activeTab === "sellers") });
   const shopperProductsQuery = trpc.products.list.useQuery({ limit: 1000, offset: 0 }, { ...liveQueryOptions, enabled: Boolean(adminUser) && activeTab === "catalogue" });
   const customersQuery = trpc.admin.users.list.useQuery({ search: "", limit: 100 }, { ...liveQueryOptions, enabled: Boolean(adminUser) && activeTab === "people" });
   const sellersQuery = trpc.admin.sellers.list.useQuery({ search: "", limit: 100 }, { ...liveQueryOptions, enabled: Boolean(adminUser) && (activeTab === "sellers" || activeTab === "catalogue") });
@@ -158,8 +160,28 @@ export default function AdminDashboardScreen() {
     ),
   });
 
+  const assignSeller = trpc.admin.products.assignSeller.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.admin.products.list.invalidate(),
+        utils.admin.sellers.list.invalidate(),
+        utils.products.list.invalidate(),
+        utils.categories.listWithCounts.invalidate(),
+        utils.admin.dashboard.invalidate(),
+      ]);
+      Alert.alert(
+        "Seller assigned",
+        "The product has been assigned. It is visible to shoppers only if it is approved."
+      );
+    },
+    onError: (error) => Alert.alert(
+      "Could not assign seller",
+      getUserFacingError(error, "Please try again.")
+    ),
+  });
+
   const createProduct = trpc.admin.products.create.useMutation({
-    onSuccess: async (product) => {
+    onSuccess: async () => {
       await Promise.all([
         utils.admin.products.list.invalidate(),
         utils.admin.dashboard.invalidate(),
@@ -169,11 +191,10 @@ export default function AdminDashboardScreen() {
       ]);
       setProductModal(false);
       setProductDraft((current) => ({ ...current, name: "", description: "", price: "", originalPrice: "", discount: "", stock: "" }));
-      if (product?.approvalStatus === "approved" && product.isActive) {
-        Alert.alert("Product published", "The product is now available through the live consumer catalogue.");
-      } else {
-        Alert.alert("Product submitted", "The product is saved and will appear in the consumer catalogue after it is approved.");
-      }
+      Alert.alert(
+        "Product saved",
+        "The product is unassigned and hidden from shoppers. Assign it to an approved, active seller from the Sellers tab."
+      );
     },
     onError: (error) => Alert.alert("Product was not saved", getUserFacingError(error, "Please check the product details and try again.")),
   });
@@ -193,9 +214,11 @@ export default function AdminDashboardScreen() {
     price: Number(product.price),
     stock: product.stock,
     builtIn: product.builtIn,
-    status: product.approvalStatus && product.approvalStatus !== "approved"
-      ? product.approvalStatus
-      : product.isActive
+    status: product.sellerId == null
+      ? "unassigned"
+      : product.approvalStatus && product.approvalStatus !== "approved"
+        ? product.approvalStatus
+        : product.isActive
         ? (product.stock === 0 ? "out of stock" : product.stock < 20 ? "low stock" : "active")
         : "inactive",
   })), [catalogueRecords, categoriesQuery.data]);
@@ -204,34 +227,30 @@ export default function AdminDashboardScreen() {
     id: seller.id,
     name: seller.shopName || seller.name || `Seller #${seller.id}`,
     owner: seller.name || "Unknown owner",
-    products: 0,
+    products: catalogueRecords.filter((product) => product.sellerId === seller.id).length,
     rating: Number(seller.shopRating || 0),
     status: seller.shopStatus || "pending",
-  })), [sellersQuery.data]);
+  })), [sellersQuery.data, catalogueRecords]);
   const people = useMemo<AdminPerson[]>(() => (customersQuery.data as LiveCustomer[] | undefined ?? []).map((customer: LiveCustomer) => ({ id: customer.id, name: customer.name || `Customer #${customer.id}`, email: customer.email || customer.phone || "No contact", orders: 0, tag: customer.isActive ? "Active account" : "Inactive account" })), [customersQuery.data]);
   const [selectedOrder, setSelectedOrder] = useState<AdminOrder | null>(null);
   const [newStatus, setNewStatus] = useState<OrderStatus>("pending");
   const [orderStatusModal, setOrderStatusModal] = useState(false);
   const [productModal, setProductModal] = useState(false);
   const [productFormError, setProductFormError] = useState("");
-  const [productDraft, setProductDraft] = useState<ProductDraft>({ sellerId: "", categoryId: "", name: "", description: "", price: "", originalPrice: "", discount: "", stock: "", publishImmediately: true });
+  const [productDraft, setProductDraft] = useState<ProductDraft>({ categoryId: "", name: "", description: "", price: "", originalPrice: "", discount: "", stock: "", publishImmediately: true });
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!productModal || editingProductId !== null) return;
-
-    const approvedSeller = (sellersQuery.data as LiveSeller[] | undefined ?? [])
-      .find((seller) => seller.shopStatus === "approved" && seller.isActive !== false);
 
     const firstCategory = (categoriesQuery.data as LiveCategory[] | undefined ?? [])
       .find((category) => category.isActive);
 
     setProductDraft((current) => ({
       ...current,
-      sellerId: current.sellerId || String(approvedSeller?.id ?? ""),
       categoryId: current.categoryId || String(firstCategory?.id ?? ""),
     }));
-  }, [productModal, editingProductId, sellersQuery.data, categoriesQuery.data]);
+  }, [productModal, editingProductId, categoriesQuery.data]);
 
 
   const handleLogout = () => {
@@ -307,16 +326,14 @@ export default function AdminDashboardScreen() {
 
   const openProductCreator = () => {
     setEditingProductId(null);
-    const approvedSeller = (sellersQuery.data as LiveSeller[] | undefined ?? []).find((seller) => seller.shopStatus === "approved");
     const firstCategory = (categoriesQuery.data as LiveCategory[] | undefined ?? []).find((category) => category.isActive);
-    setProductDraft((current) => ({ ...current, sellerId: current.sellerId || String(approvedSeller?.id ?? ""), categoryId: current.categoryId || String(firstCategory?.id ?? "") }));
+    setProductDraft((current) => ({ ...current, categoryId: current.categoryId || String(firstCategory?.id ?? "") }));
     setProductModal(true);
   };
 
   const openProductEditor = (product: LiveProduct) => {
     setEditingProductId(product.id);
     setProductDraft({
-      sellerId: "",
       categoryId: String(product.categoryId),
       name: product.name,
       description: product.description ?? "",
@@ -331,13 +348,11 @@ export default function AdminDashboardScreen() {
 
   const submitProduct = () => {
     setProductFormError("");
-    const sellerId = Number(productDraft.sellerId);
     const categoryId = Number(productDraft.categoryId);
     const price = Number(productDraft.price);
     const stock = Number(productDraft.stock);
-    if (!sellerId || !categoryId || productDraft.name.trim().length < 2 || !Number.isFinite(price) || price <= 0 || !Number.isInteger(stock) || stock < 0) {
+    if (!categoryId || productDraft.name.trim().length < 2 || !Number.isFinite(price) || price <= 0 || !Number.isInteger(stock) || stock < 0) {
       const missing = [
-        !sellerId && "Select an approved seller",
         !categoryId && "Select a category",
         productDraft.name.trim().length < 2 && "Enter a product name with at least 2 characters",
         (!Number.isFinite(price) || price <= 0) && "Enter a price greater than zero",
@@ -350,7 +365,7 @@ export default function AdminDashboardScreen() {
       updateProduct.mutate({ id: editingProductId, name: productDraft.name.trim(), description: productDraft.description.trim() || null, price, originalPrice: productDraft.originalPrice.trim() ? Number(productDraft.originalPrice) : null, discount: productDraft.discount.trim() ? Number(productDraft.discount) : 0, stock });
       return;
     }
-    createProduct.mutate({ sellerId, categoryId, name: productDraft.name.trim(), description: productDraft.description.trim() || undefined, price, originalPrice: productDraft.originalPrice.trim() ? Number(productDraft.originalPrice) : undefined, discount: productDraft.discount.trim() ? Number(productDraft.discount) : undefined, stock, publishImmediately: productDraft.publishImmediately });
+    createProduct.mutate({ categoryId, name: productDraft.name.trim(), description: productDraft.description.trim() || undefined, price, originalPrice: productDraft.originalPrice.trim() ? Number(productDraft.originalPrice) : undefined, discount: productDraft.discount.trim() ? Number(productDraft.discount) : undefined, stock, publishImmediately: productDraft.publishImmediately });
   };
 
   const stats = [
@@ -575,10 +590,64 @@ export default function AdminDashboardScreen() {
     </ScrollView>
   );
 
+  const unassignedProducts = catalogueRecords.filter((product) => product.sellerId == null);
+  const assignableSellers = (sellersQuery.data as LiveSeller[] | undefined ?? [])
+    .filter((seller) => seller.shopStatus === "approved" && seller.isActive !== false);
+
   const renderSellers = () => (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       <View style={styles.pageIntro}><Text style={styles.pageKicker}>SELLER NETWORK</Text><Text style={styles.pageTitle}>Seller desk</Text><Text style={styles.pageSubtitle}>Approve new businesses, then use the verification checklist to review documents and payouts.</Text></View>
       <Pressable onPress={() => router.push("/admin-verification" as never)} style={({ pressed }) => [styles.fullWidthAction, styles.reviewAction, pressed && styles.pressed]}><View style={[styles.fullWidthActionIcon, { backgroundColor: "#FFF3C4" }]}><Ionicons name="shield-checkmark" size={21} color="#8A5A00" /></View><View style={styles.fullWidthActionCopy}><Text style={styles.fullWidthActionTitle}>Open seller review desk</Text><Text style={styles.fullWidthActionText}>{pendingSellerCount} seller profile{pendingSellerCount === 1 ? "" : "s"} waiting for a decision.</Text></View><Ionicons name="arrow-forward" size={19} color="#14532D" /></Pressable>
+      <SectionHeading
+        title="Unassigned products"
+        detail={`${unassignedProducts.length} product${unassignedProducts.length === 1 ? "" : "s"} waiting for a seller.`}
+      />
+      <View style={styles.listCard}>
+        {unassignedProducts.length === 0 ? (
+          <Text style={styles.pageSubtitle}>There are no unassigned products.</Text>
+        ) : unassignedProducts.map((product, index) => (
+          <View key={product.id} style={{ paddingVertical: 14 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sellerName}>{product.name}</Text>
+                <Text style={styles.sellerDetail}>
+                  ₹{Number(product.price).toFixed(2)} · {product.stock} in stock
+                </Text>
+              </View>
+              <StatusChip label={product.approvalStatus ?? "pending"} />
+            </View>
+            {assignableSellers.length > 0 ? (
+              <>
+                <Text style={[styles.modalFieldLabel, { marginTop: 12 }]}>Assign to approved seller</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 8 }}>
+                  {assignableSellers.map((seller) => (
+                    <Pressable
+                      key={seller.id}
+                      disabled={assignSeller.isPending}
+                      onPress={() => assignSeller.mutate({ productId: product.id, sellerId: seller.id })}
+                      style={({ pressed }) => [
+                        styles.choicePill,
+                        pressed && styles.pressed,
+                        assignSeller.isPending && { opacity: 0.6 },
+                      ]}
+                    >
+                      <Text style={styles.choicePillText}>
+                        {seller.shopName || seller.name || `Seller #${seller.id}`}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </>
+            ) : (
+              <Text style={[styles.pageSubtitle, { marginTop: 10 }]}>
+                Approve an active seller before assigning products.
+              </Text>
+            )}
+            {index < unassignedProducts.length - 1 ? <View style={[styles.rowDivider, { marginTop: 14 }]} /> : null}
+          </View>
+        ))}
+      </View>
+      <SectionHeading title="Seller accounts" detail="Review seller status and shop information." />
       <View style={styles.listCard}>{sellers.map((seller, index) => <View key={seller.id}><View style={styles.sellerRow}><View style={styles.sellerAvatar}>{seller.shopLogo ? <Image source={{ uri: seller.shopLogo }} style={styles.sellerLogo} /> : <Ionicons name="storefront" size={21} color="#28723B" />}</View><View style={styles.sellerCopy}><View style={styles.sellerNameRow}><Text style={styles.sellerName}>{seller.name}</Text><StatusChip label={seller.status} /></View><Text style={styles.sellerOwner}>{seller.owner} · {seller.products} products</Text>{seller.shopDescription ? <Text style={styles.sellerDetail} numberOfLines={2}>{seller.shopDescription}</Text> : null}<Text style={styles.sellerDetail}>{seller.address || "Shop address not added"}</Text>{seller.shopHours?.openingTime && seller.shopHours?.closingTime ? <Text style={styles.sellerDetail}>Hours: {seller.shopHours.openingTime}–{seller.shopHours.closingTime}{seller.shopHours.openDays?.length ? ` · ${seller.shopHours.openDays.join(", ")}` : ""}</Text> : null}<View style={styles.sellerRatingRow}><Ionicons name="star" size={14} color="#D69200" /><Text style={styles.sellerRating}>{seller.rating.toFixed(1)} rating</Text></View>{seller.status === "pending" ? <View style={styles.approvalActions}><Pressable onPress={() => updateSellerStatus(seller, "approved")} style={({ pressed }) => [styles.approveButton, pressed && styles.pressed]}><Text style={styles.approveButtonText}>Approve</Text></Pressable><Pressable onPress={() => updateSellerStatus(seller, "rejected")} style={({ pressed }) => [styles.rejectButton, pressed && styles.pressed]}><Text style={styles.rejectButtonText}>Reject</Text></Pressable></View> : null}</View></View>{index < sellers.length - 1 ? <View style={styles.rowDivider} /> : null}</View>)}</View>
     </ScrollView>
   );
@@ -609,9 +678,12 @@ export default function AdminDashboardScreen() {
       <View style={[styles.modalBackdrop, Platform.OS === "web" && { position: "fixed" as any, inset: 0, zIndex: 9999, width: "100%" as any, height: "100%" as any }]}>
         <View style={[styles.modalSheet, { maxHeight: "92%", width: "100%", maxWidth: 620, alignSelf: "center" }]}><View style={styles.modalHandle} /><View style={styles.modalHeading}><View><Text style={styles.modalEyebrow}>LIVE CATALOGUE</Text><Text style={styles.modalTitle}>{editingProductId === null ? "Add product" : "Edit product"}</Text></View><Pressable onPress={() => setProductModal(false)} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}><Ionicons name="close" size={20} color="#173C25" /></Pressable></View><ScrollView showsVerticalScrollIndicator={false}>
           {([ ["Product name", "name", false], ["Description", "description", true], ["Price", "price", false], ["Original price", "originalPrice", false], ["Discount %", "discount", false], ["Stock quantity", "stock", false] ] as const).map(([label, key, multiline]) => <View key={key} style={{ marginTop: 13 }}><Text style={styles.modalFieldLabel}>{label}</Text><TextInput value={productDraft[key]} onChangeText={(value) => setProductDraft((current) => ({ ...current, [key]: value }))} keyboardType={key === "name" || key === "description" ? "default" : "decimal-pad"} multiline={multiline} placeholder={key === "description" ? "Optional shopper-facing description" : label} placeholderTextColor="#9AA79E" style={[styles.modalInput, multiline && { minHeight: 76, textAlignVertical: "top" }]} /></View>)}
-          <Text style={[styles.modalFieldLabel, { marginTop: 13 }]}>Approved seller</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 8 }}>{((sellersQuery.data ?? []) as LiveSeller[]).filter((seller) => seller.shopStatus === "approved" && seller.isActive !== false).map((seller) => <Pressable key={seller.id} onPress={() => setProductDraft((current) => ({ ...current, sellerId: String(seller.id) }))} style={[styles.choicePill, productDraft.sellerId === String(seller.id) && styles.choicePillActive]}><Text style={[styles.choicePillText, productDraft.sellerId === String(seller.id) && styles.choicePillTextActive]}>{seller.shopName || seller.name || `Seller #${seller.id}`}</Text></Pressable>)}</ScrollView>
+          <View style={{ marginTop: 13, padding: 12, borderRadius: 10, backgroundColor: "#FFF8E6" }}>
+            <Text style={styles.modalFieldLabel}>Seller assignment</Text>
+            <Text style={styles.publishToggleText}>This product stays hidden from shoppers until you assign it to an approved, active seller from the Sellers tab.</Text>
+          </View>
           <Text style={[styles.modalFieldLabel, { marginTop: 13 }]}>Category</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 8 }}>{((categoriesQuery.data ?? []) as LiveCategory[]).filter((category) => category.isActive).map((category) => <Pressable key={category.id} onPress={() => setProductDraft((current) => ({ ...current, categoryId: String(category.id) }))} style={[styles.choicePill, productDraft.categoryId === String(category.id) && styles.choicePillActive]}><Text style={[styles.choicePillText, productDraft.categoryId === String(category.id) && styles.choicePillTextActive]}>{category.name}</Text></Pressable>)}</ScrollView>
-          <Pressable onPress={() => setProductDraft((current) => ({ ...current, publishImmediately: !current.publishImmediately }))} style={[styles.publishToggle, productDraft.publishImmediately && styles.publishToggleActive]}><Ionicons name={productDraft.publishImmediately ? "checkmark-circle" : "ellipse-outline"} size={21} color={productDraft.publishImmediately ? "#166534" : "#68776D"} /><View style={{ flex: 1 }}><Text style={styles.publishToggleTitle}>Publish immediately</Text><Text style={styles.publishToggleText}>Approved products appear in the consumer catalogue on the next live refresh.</Text></View></Pressable>
+          <Pressable onPress={() => setProductDraft((current) => ({ ...current, publishImmediately: !current.publishImmediately }))} style={[styles.publishToggle, productDraft.publishImmediately && styles.publishToggleActive]}><Ionicons name={productDraft.publishImmediately ? "checkmark-circle" : "ellipse-outline"} size={21} color={productDraft.publishImmediately ? "#166534" : "#68776D"} /><View style={{ flex: 1 }}><Text style={styles.publishToggleTitle}>Publish immediately</Text><Text style={styles.publishToggleText}>This approves the product, but it stays hidden until you assign an approved seller.</Text></View></Pressable>
           {productFormError ? <Text style={{ color: "#B42318", backgroundColor: "#FEF3F2", padding: 10, borderRadius: 8, marginTop: 14 }}>{productFormError}</Text> : null}
           <Pressable onPress={submitProduct} disabled={createProduct.isPending || updateProduct.isPending} style={({ pressed }) => [styles.modalPrimaryButton, { marginTop: 16 }, pressed && styles.pressed, (createProduct.isPending || updateProduct.isPending) && { opacity: 0.6 }]}><Text style={styles.modalPrimaryText}>{createProduct.isPending || updateProduct.isPending ? "Saving…" : editingProductId === null ? "Create product" : "Save changes"}</Text><Ionicons name="checkmark" size={18} color="#14532D" /></Pressable>
         </ScrollView></View></View>

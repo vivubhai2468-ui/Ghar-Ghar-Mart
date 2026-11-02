@@ -1,4 +1,4 @@
-import { eq, and, or, desc, like, gte, lte, asc, sql, isNull } from "drizzle-orm";
+import { eq, and, or, desc, like, gte, lte, asc, sql, isNull, isNotNull } from "drizzle-orm";
 
 import { createHash, randomBytes, randomInt, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
@@ -228,7 +228,7 @@ export async function getProducts(limit = 20, offset = 0, pincode?: string) {
   const items = await db
     .select()
     .from(products)
-    .where(and(eq(products.isActive, true), eq(products.approvalStatus, "approved")))
+    .where(and(isNotNull(products.sellerId), eq(products.isActive, true), eq(products.approvalStatus, "approved")))
     .orderBy(desc(products.isFeatured), desc(products.rating), desc(products.createdAt))
     .limit(limit)
     .offset(offset);
@@ -238,7 +238,7 @@ export async function getProducts(limit = 20, offset = 0, pincode?: string) {
 export async function getProductById(id: number) {
   const db = await getDb();
   if (!db) return null;
-  const result = await db.select().from(products).where(and(eq(products.id, id), eq(products.isActive, true), eq(products.approvalStatus, "approved")));
+  const result = await db.select().from(products).where(and(eq(products.id, id), isNotNull(products.sellerId), eq(products.isActive, true), eq(products.approvalStatus, "approved")));
   return result[0] || null;
 }
 
@@ -249,7 +249,7 @@ export async function getProductsByCategory(categoryId: number, limit = 20) {
     .select()
     .from(products)
     .where(
-      and(eq(products.categoryId, categoryId), eq(products.isActive, true), eq(products.approvalStatus, "approved"))
+      and(eq(products.categoryId, categoryId), isNotNull(products.sellerId), eq(products.isActive, true), eq(products.approvalStatus, "approved"))
     )
     .limit(limit);
 }
@@ -292,6 +292,7 @@ export async function searchProducts(query: string) {
     .from(products)
     .where(
       and(
+        isNotNull(products.sellerId),
         like(products.name, `%${query}%`),
         eq(products.isActive, true),
         eq(products.approvalStatus, "approved")
@@ -392,6 +393,7 @@ export async function getCategoriesWithCounts(pincode?: string) {
         .where(
           and(
             eq(products.categoryId, cat.id),
+            isNotNull(products.sellerId),
             eq(products.isActive, true),
             eq(products.approvalStatus, "approved")
           )
@@ -438,6 +440,7 @@ export async function getProductsByCategoryWithFilters(
     .where(
       and(
         eq(products.categoryId, categoryId),
+        isNotNull(products.sellerId),
         eq(products.isActive, true),
         eq(products.approvalStatus, "approved"),
         minPrice !== undefined ? gte(products.price, minPrice.toString()) : undefined,
@@ -490,6 +493,7 @@ export async function searchProductsAdvanced(
   const searchTerm = `%${query}%`;
   
   let whereConditions: any[] = [
+    isNotNull(products.sellerId),
     eq(products.isActive, true),
     eq(products.approvalStatus, "approved"),
     or(
@@ -552,7 +556,7 @@ export async function getBuyAgainProducts(userId: number, limit = 8, pincode?: s
     .slice(0, limit * 2)
     .map(([productId]) => productId);
   const candidateRows = await Promise.all(rankedIds.map(async (productId) => {
-    const rows = await db.select().from(products).where(and(eq(products.id, productId), eq(products.isActive, true), eq(products.approvalStatus, "approved"))).limit(1);
+    const rows = await db.select().from(products).where(and(eq(products.id, productId), isNotNull(products.sellerId), eq(products.isActive, true), eq(products.approvalStatus, "approved"))).limit(1);
     return rows[0];
   }));
   const visible = await applyRegionalAvailability(candidateRows.filter(Boolean) as any[], pincode);

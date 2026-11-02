@@ -160,7 +160,7 @@ export type InsertHomeOfferBanner = typeof homeOfferBanners.$inferInsert;
  */
 export const products = mysqlTable("products", {
   id: int("id").autoincrement().primaryKey(),
-  sellerId: int("sellerId").notNull(),
+  sellerId: int("sellerId"),
   categoryId: int("categoryId").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),

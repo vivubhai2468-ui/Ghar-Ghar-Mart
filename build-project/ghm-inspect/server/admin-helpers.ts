@@ -68,6 +68,13 @@ export async function getAdminProducts(limit = 50, offset = 0) {
     .offset(offset);
 }
 
+export async function getAdminProductById(productId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(products).where(eq(products.id, productId));
+  return result[0] ?? null;
+}
+
 export async function getLowStockProducts(threshold = 50) {
   const db = await getDb();
   if (!db) return [];
@@ -108,7 +115,7 @@ export async function updateProductStock(productId: number, newStock: number) {
 
 export async function updateAdminProduct(
   productId: number,
-  data: { name?: string; description?: string | null; price?: string; originalPrice?: string | null; discount?: number; stock?: number },
+  data: { name?: string; description?: string | null; price?: string; originalPrice?: string | null; discount?: number; stock?: number; sellerId?: number | null; isActive?: boolean },
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
