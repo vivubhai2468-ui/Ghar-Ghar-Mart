@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -64,7 +65,7 @@ type LiveSeller = {
 };
 type LiveCustomer = { id: number; name: string | null; email: string | null; phone: string | null; isActive: boolean };
 type LiveCategory = { id: number; name: string; isActive: boolean };
-type ProductDraft = { categoryId: string; name: string; description: string; price: string; originalPrice: string; discount: string; stock: string; publishImmediately: boolean };
+type ProductDraft = { categoryId: string; name: string; description: string; price: string; originalPrice: string; discount: string; stock: string; publishImmediately: boolean; imageUrl: string };
 
 const TAB_ITEMS: Array<{ id: TabId; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
   { id: "overview", label: "Overview", icon: "grid-outline" },
@@ -180,6 +181,7 @@ export default function AdminDashboardScreen() {
     ),
   });
 
+  const uploadProductImage = trpc.seller.catalog.uploadImage.useMutation();
   const createProduct = trpc.admin.products.create.useMutation({
     onSuccess: async () => {
       await Promise.all([
@@ -190,7 +192,7 @@ export default function AdminDashboardScreen() {
         utils.categories.listWithCounts.invalidate(),
       ]);
       setProductModal(false);
-      setProductDraft((current) => ({ ...current, name: "", description: "", price: "", originalPrice: "", discount: "", stock: "" }));
+      setProductDraft((current) => ({ ...current, name: "", description: "", price: "", originalPrice: "", discount: "", stock: "", imageUrl: "" }));
       Alert.alert(
         "Product saved",
         "The product is unassigned and hidden from shoppers. Assign it to an approved, active seller from the Sellers tab."
@@ -237,7 +239,7 @@ export default function AdminDashboardScreen() {
   const [orderStatusModal, setOrderStatusModal] = useState(false);
   const [productModal, setProductModal] = useState(false);
   const [productFormError, setProductFormError] = useState("");
-  const [productDraft, setProductDraft] = useState<ProductDraft>({ categoryId: "", name: "", description: "", price: "", originalPrice: "", discount: "", stock: "", publishImmediately: true });
+  const [productDraft, setProductDraft] = useState<ProductDraft>({ categoryId: "", name: "", description: "", price: "", originalPrice: "", discount: "", stock: "", publishImmediately: true, imageUrl: "" });
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -327,7 +329,7 @@ export default function AdminDashboardScreen() {
   const openProductCreator = () => {
     setEditingProductId(null);
     const firstCategory = (categoriesQuery.data as LiveCategory[] | undefined ?? []).find((category) => category.isActive);
-    setProductDraft((current) => ({ ...current, categoryId: current.categoryId || String(firstCategory?.id ?? "") }));
+    setProductDraft({ categoryId: String(firstCategory?.id ?? ""), name: "", description: "", price: "", originalPrice: "", discount: "", stock: "", publishImmediately: true, imageUrl: "" });
     setProductModal(true);
   };
 
@@ -342,8 +344,31 @@ export default function AdminDashboardScreen() {
       discount: product.discount == null ? "" : String(product.discount),
       stock: String(product.stock),
       publishImmediately: product.isActive,
+      imageUrl: "",
     });
     setProductModal(true);
+  };
+
+  const pickProductImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.72,
+        base64: true,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (!asset?.base64) throw new Error("Unable to prepare the selected image");
+      if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) throw new Error("Choose an image smaller than 5 MB");
+      const mimeType = asset.mimeType === "image/png" || asset.mimeType === "image/webp" ? asset.mimeType : "image/jpeg";
+      const uploaded = await uploadProductImage.mutateAsync({ mimeType, contentBase64: asset.base64 });
+      setProductDraft((current) => ({ ...current, imageUrl: uploaded.url }));
+      Alert.alert("Image uploaded", "The product image is ready to be saved with this product.");
+    } catch (error) {
+      Alert.alert("Image upload failed", getUserFacingError(error, "Choose a JPG, PNG or WebP image under 5 MB and try again."));
+    }
   };
 
   const submitProduct = () => {
@@ -365,7 +390,7 @@ export default function AdminDashboardScreen() {
       updateProduct.mutate({ id: editingProductId, name: productDraft.name.trim(), description: productDraft.description.trim() || null, price, originalPrice: productDraft.originalPrice.trim() ? Number(productDraft.originalPrice) : null, discount: productDraft.discount.trim() ? Number(productDraft.discount) : 0, stock });
       return;
     }
-    createProduct.mutate({ categoryId, name: productDraft.name.trim(), description: productDraft.description.trim() || undefined, price, originalPrice: productDraft.originalPrice.trim() ? Number(productDraft.originalPrice) : undefined, discount: productDraft.discount.trim() ? Number(productDraft.discount) : undefined, stock, publishImmediately: productDraft.publishImmediately });
+    createProduct.mutate({ categoryId, name: productDraft.name.trim(), description: productDraft.description.trim() || undefined, price, originalPrice: productDraft.originalPrice.trim() ? Number(productDraft.originalPrice) : undefined, discount: productDraft.discount.trim() ? Number(productDraft.discount) : undefined, stock, images: productDraft.imageUrl ? [productDraft.imageUrl] : undefined, publishImmediately: productDraft.publishImmediately });
   };
 
   const stats = [
@@ -678,6 +703,40 @@ export default function AdminDashboardScreen() {
       <View style={[styles.modalBackdrop, Platform.OS === "web" && { position: "fixed" as any, inset: 0, zIndex: 9999, width: "100%" as any, height: "100%" as any }]}>
         <View style={[styles.modalSheet, { maxHeight: "92%", width: "100%", maxWidth: 620, alignSelf: "center" }]}><View style={styles.modalHandle} /><View style={styles.modalHeading}><View><Text style={styles.modalEyebrow}>LIVE CATALOGUE</Text><Text style={styles.modalTitle}>{editingProductId === null ? "Add product" : "Edit product"}</Text></View><Pressable onPress={() => setProductModal(false)} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}><Ionicons name="close" size={20} color="#173C25" /></Pressable></View><ScrollView showsVerticalScrollIndicator={false}>
           {([ ["Product name", "name", false], ["Description", "description", true], ["Price", "price", false], ["Original price", "originalPrice", false], ["Discount %", "discount", false], ["Stock quantity", "stock", false] ] as const).map(([label, key, multiline]) => <View key={key} style={{ marginTop: 13 }}><Text style={styles.modalFieldLabel}>{label}</Text><TextInput value={productDraft[key]} onChangeText={(value) => setProductDraft((current) => ({ ...current, [key]: value }))} keyboardType={key === "name" || key === "description" ? "default" : "decimal-pad"} multiline={multiline} placeholder={key === "description" ? "Optional shopper-facing description" : label} placeholderTextColor="#9AA79E" style={[styles.modalInput, multiline && { minHeight: 76, textAlignVertical: "top" }]} /></View>)}
+          {editingProductId === null ? (
+            <View style={{ marginTop: 13 }}>
+              <Text style={styles.modalFieldLabel}>Product image</Text>
+              <Pressable
+                onPress={pickProductImage}
+                disabled={uploadProductImage.isPending}
+                style={({ pressed }) => ({
+                  marginTop: 8,
+                  minHeight: 48,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderStyle: "dashed",
+                  borderColor: "#B9D9B8",
+                  backgroundColor: "#F6FAF4",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 9,
+                  opacity: pressed || uploadProductImage.isPending ? 0.6 : 1,
+                })}
+              >
+                <Ionicons name={uploadProductImage.isPending ? "cloud-upload-outline" : productDraft.imageUrl ? "checkmark-circle" : "image-outline"} size={19} color="#28723B" />
+                <Text style={styles.choicePillText}>
+                  {uploadProductImage.isPending ? "Uploading image…" : productDraft.imageUrl ? "Change product image" : "Choose product image"}
+                </Text>
+              </Pressable>
+              {productDraft.imageUrl ? (
+                <Image source={{ uri: productDraft.imageUrl }} style={{ width: "100%", height: 160, borderRadius: 12, marginTop: 10 }} resizeMode="cover" />
+              ) : null}
+              <Text style={{ color: "#718278", fontSize: 11, marginTop: 7 }}>Optional · JPG, PNG or WebP · maximum 5 MB.</Text>
+            </View>
+          ) : null}
           <View style={{ marginTop: 13, padding: 12, borderRadius: 10, backgroundColor: "#FFF8E6" }}>
             <Text style={styles.modalFieldLabel}>Seller assignment</Text>
             <Text style={styles.publishToggleText}>This product stays hidden from shoppers until you assign it to an approved, active seller from the Sellers tab.</Text>
