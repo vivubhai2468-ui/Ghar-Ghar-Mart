@@ -1074,13 +1074,19 @@ export const appRouter = router({
       uploadImage: protectedProcedure
         .input(z.object({ mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]), contentBase64: z.string().min(20).max(7_000_000) }))
         .mutation(async ({ ctx, input }) => {
-          if (ctx.user?.role !== "seller") throw new Error("Only sellers can upload product images");
-          const seller = await db.getUserById(ctx.user.id);
-          if (!seller?.isActive || seller.shopStatus !== "approved") throw new Error("Product images can be uploaded after seller approval");
+          const role = ctx.user?.role;
+          if (role !== "seller" && role !== "admin") throw new Error("Only sellers and admins can upload product images");
+          if (role === "seller") {
+            const seller = await db.getUserById(ctx.user.id);
+            if (!seller?.isActive || seller.shopStatus !== "approved") throw new Error("Product images can be uploaded after seller approval");
+          }
           const bytes = Buffer.from(input.contentBase64, "base64");
           if (!bytes.length || bytes.length > 5 * 1024 * 1024) throw new Error("Images must be less than 5 MB");
           const extension = input.mimeType === "image/png" ? "png" : input.mimeType === "image/webp" ? "webp" : "jpg";
-          return storagePut(`seller-products/${ctx.user.id}/product.${extension}`, bytes, input.mimeType);
+          const storageKey = role === "admin"
+            ? `admin-products/${ctx.user.id}/${Date.now()}.${extension}`
+            : `seller-products/${ctx.user.id}/product.${extension}`;
+          return storagePut(storageKey, bytes, input.mimeType);
         }),
     }),
 
