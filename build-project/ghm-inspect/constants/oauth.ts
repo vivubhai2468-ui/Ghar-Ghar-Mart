@@ -13,7 +13,7 @@ const env = {
   appId: process.env.EXPO_PUBLIC_APP_ID ?? "",
   ownerId: process.env.EXPO_PUBLIC_OWNER_OPEN_ID ?? "",
   ownerName: process.env.EXPO_PUBLIC_OWNER_NAME ?? "",
-  apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "",
+  apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://ghar-ghar-mart.onrender.com",
   deepLinkScheme: schemeFromBundleId,
 };
 
@@ -30,6 +30,15 @@ export const API_BASE_URL = env.apiBaseUrl;
  * URL pattern: https://PORT-sandboxid.region.domain
  */
 export function getApiBaseUrl(): string {
+  if (
+    ReactNative.Platform.OS === "web" &&
+    typeof window !== "undefined" &&
+    window.location &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+  ) {
+    return `${window.location.protocol}//${window.location.hostname}:3000`;
+  }
+
   // If API_BASE_URL is set, use it
   if (API_BASE_URL) {
     return API_BASE_URL.replace(/\/$/, "");

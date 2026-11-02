@@ -10,9 +10,9 @@ import {
 } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { useCart } from "@/lib/cart-context";
-import { PRODUCTS } from "@/lib/products-data";
 import { router, useLocalSearchParams } from "expo-router";
 import { trpc } from "@/lib/trpc";
+
 
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams();
@@ -33,7 +33,7 @@ export default function ProductDetailScreen() {
     image: liveProduct.images?.[0] ?? "https://via.placeholder.com/400x400?text=Grocery",
     stock: Number(liveProduct.stock ?? 0),
     description: liveProduct.description ?? "Everyday grocery essential",
-  } : PRODUCTS.find((item) => item.id === id);
+  } : undefined;
   const { addItem } = useCart();
 
   const [quantity, setQuantity] = useState(1);

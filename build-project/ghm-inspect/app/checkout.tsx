@@ -12,7 +12,7 @@ import { useAuth } from '@/lib/auth-context';
 import { trpc } from '@/lib/trpc';
 import { getUserFacingError } from '@/lib/user-facing-error';
 import { DestinationMapPicker, type DestinationCoordinate } from '@/components/destination-map-picker';
-import { calculateOrderTotal, POOR_PEOPLE_DONATION } from '@/shared/delivery-pricing';
+import { calculateOrderTotal, DEFAULT_DELIVERY_PRICING, POOR_PEOPLE_DONATION } from '@/shared/delivery-pricing';
 
 type CheckoutAddress = {
   id: string;
@@ -94,10 +94,8 @@ export default function CheckoutScreen() {
     ? cartSellerId
     : Number(cartProductQuery.data?.sellerId ?? 0);
   const deliveryQuoteQuery = trpc.delivery.quote.useQuery({ sellerId: sellerId || 1, deliveryLatitude: selectedAddress?.latitude ?? 0, deliveryLongitude: selectedAddress?.longitude ?? 0 }, { enabled: Boolean(user && sellerId && selectedAddress), refetchOnWindowFocus: true });
-  const delivery = deliveryQuoteQuery.data?.deliveryCharge;
-  const baseDelivery = deliveryQuoteQuery.data?.baseCharge;
-  const additionalDelivery = deliveryQuoteQuery.data ? deliveryQuoteQuery.data.additionalDistanceKm * deliveryQuoteQuery.data.additionalChargePerKm : undefined;
-  const total = delivery === undefined ? null : calculateOrderTotal({ subtotal, deliveryCharge: delivery });
+  const deliveryCharge = DEFAULT_DELIVERY_PRICING.baseCharge;
+  const total = calculateOrderTotal({ subtotal, deliveryCharge });
 
   const choosePaymentProof = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, quality: 0.8 });
@@ -204,18 +202,6 @@ export default function CheckoutScreen() {
       Alert.alert('Store unavailable', 'We could not identify the store for this cart. Remove the affected item and add it again from the product page.');
       return;
     }
-    if (deliveryQuoteQuery.isFetching && !deliveryQuoteQuery.data) {
-      Alert.alert('Calculating delivery charge', 'Please wait while we calculate the delivery route.');
-      return;
-    }
-    if (!deliveryQuoteQuery.data) {
-      if (deliveryQuoteQuery.error) {
-        await deliveryQuoteQuery.refetch();
-        return;
-      }
-      Alert.alert('Delivery charge unavailable', 'We could not calculate the actual route. Please try again.');
-      return;
-    }
     if (paymentMethod === 'online' && !paymentProof) {
       Alert.alert('Upload payment proof', 'Scan the PhonePe QR, complete payment, and upload the payment screenshot before placing the order.');
       return;
@@ -231,8 +217,8 @@ export default function CheckoutScreen() {
         deliveryLongitude: selectedAddress.longitude,
         subtotal,
         tax: 0,
-        shippingCost: deliveryQuoteQuery.data.deliveryCharge,
-        total: total ?? 0,
+        shippingCost: deliveryCharge,
+        total,
         items: items.map((item) => ({
           productId: Number(item.productId),
           productName: item.productName,
@@ -320,13 +306,10 @@ export default function CheckoutScreen() {
 
         <View style={[styles.summaryBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: colors.muted }]}>Subtotal</Text><Text style={[styles.summaryValue, { color: colors.foreground }]}>₹{subtotal.toFixed(0)}</Text></View>
-          <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: colors.muted }]}>Delivery charge (first 2 km)</Text><Text style={[styles.summaryValue, { color: colors.foreground }]}>{baseDelivery === undefined ? '—' : `₹${baseDelivery.toFixed(2)}`}</Text></View>
-          <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: colors.muted }]}>{deliveryQuoteQuery.data ? `Additional distance (${deliveryQuoteQuery.data.additionalDistanceKm.toFixed(0)} km × ₹${deliveryQuoteQuery.data.additionalChargePerKm.toFixed(2)})` : 'Additional distance (₹5 per started km after 2 km)'}</Text><Text style={[styles.summaryValue, { color: colors.foreground }]}>{additionalDelivery === undefined ? '—' : `₹${additionalDelivery.toFixed(2)}`}</Text></View>
+          <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: colors.muted }]}>Delivery charge</Text><Text style={[styles.summaryValue, { color: colors.foreground }]}>₹{deliveryCharge.toFixed(2)}</Text></View>
           <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: colors.muted }]}>Donation for people in need</Text><Text style={[styles.summaryValue, { color: colors.foreground }]}>₹{POOR_PEOPLE_DONATION.toFixed(0)}</Text></View>
-          {deliveryQuoteQuery.isFetching ? <Text style={[styles.pricingHint, { color: colors.muted }]}>Calculating actual road distance from the store…</Text> : null}
-          {deliveryQuoteQuery.error ? <Text style={[styles.pricingError, { color: '#B42318' }]}>Delivery pricing unavailable: {deliveryQuoteQuery.error.message}</Text> : null}
           <View style={[styles.totalRow, { borderTopColor: colors.border }]}><Text style={[styles.totalLabel, { color: colors.foreground }]}>Total amount to be paid</Text><Text style={[styles.totalValue, { color: colors.primary }]}>{total === null ? '—' : `₹${total.toFixed(2)}`}</Text></View>
-          <Text style={[styles.pricingHint, { color: colors.muted }]}>Delivery starts at ₹10 for the first 2 km. The final delivery charge may vary according to your location and calculated road distance.</Text>
+          <Text style={[styles.pricingHint, { color: colors.muted }]}>A fixed ₹10 delivery charge applies to every order.</Text>
         </View>
       </ScrollView>
 
@@ -347,8 +330,7 @@ export default function CheckoutScreen() {
         </ScreenContainer>
       </Modal>
 
-      <TouchableOpacity disabled={createOrder.isPending || uploadPaymentProof.isPending || cartProductQuery.isLoading || (deliveryQuoteQuery.isFetching && !deliveryQuoteQuery.data)} onPress={handlePlaceOrder} style={[styles.placeOrderButton, { backgroundColor: createOrder.isPending || uploadPaymentProof.isPending || cartProductQuery.isLoading || (deliveryQuoteQuery.isFetching && !deliveryQuoteQuery.data) ? '#8BAF90' : colors.primary }]}>
-        {createOrder.isPending || uploadPaymentProof.isPending || cartProductQuery.isLoading || (deliveryQuoteQuery.isFetching && !deliveryQuoteQuery.data) ? <ActivityIndicator color="#FFFFFF" /> : <Text style={[styles.placeOrderText, { color: colors.background }]}>{!selectedAddress ? 'Choose delivery pin to continue' : !deliveryQuoteQuery.data && deliveryQuoteQuery.error ? 'Retry delivery calculation' : paymentMethod === 'online' && !paymentProof ? `Upload payment proof · ₹${total?.toFixed(2) ?? '—'}` : `Place order · ₹${total?.toFixed(2) ?? '—'}`}</Text>}
+      <TouchableOpacity disabled={createOrder.isPending || uploadPaymentProof.isPending || cartProductQuery.isLoading} onPress={handlePlaceOrder} style={[styles.placeOrderButton, { backgroundColor: createOrder.isPending || uploadPaymentProof.isPending || cartProductQuery.isLoading ? '#8BAF90' : colors.primary }]}>
       </TouchableOpacity>
     </ScreenContainer>
   );

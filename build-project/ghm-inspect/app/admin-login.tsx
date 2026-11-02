@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,20 +18,30 @@ export default function AdminLoginScreen() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [loginError, setLoginError] = useState("");
   const { adminLogin } = useAdminAuth();
 
   const handleAdminLogin = async () => {
+    setLoginError("");
+
     if (!username.trim() || !password) {
-      Alert.alert("Complete the form", "Enter both your username and password.");
+      setLoginError("Enter both your username and password.");
       return;
     }
+
     setIsLoading(true);
+
     try {
-      await adminLogin(username, password);
-      setTimeout(() => router.replace("/admin-dashboard"), 450);
-    } catch {
+      await adminLogin(username.trim(), password);
+      router.replace("/admin-dashboard");
+    } catch (error) {
+      setLoginError(
+        error instanceof Error
+          ? error.message
+          : "Unable to sign in. Please try again."
+      );
+    } finally {
       setIsLoading(false);
-      Alert.alert("Sign-in failed", "The username or password is not recognised.");
     }
   };
 
@@ -97,6 +106,17 @@ export default function AdminLoginScreen() {
               </View>
             </View>
 
+            {loginError ? (
+              <Text style={{
+                color: "#B91C1C",
+                fontSize: 13,
+                marginTop: 14,
+                textAlign: "center",
+              }}>
+                {loginError}
+              </Text>
+            ) : null}
+
             <Pressable
               onPress={handleAdminLogin}
               disabled={isLoading}
@@ -105,11 +125,6 @@ export default function AdminLoginScreen() {
               {isLoading ? <ActivityIndicator color="#14532D" /> : <><Text style={styles.primaryButtonText}>Open control center</Text><Ionicons name="arrow-forward" size={18} color="#14532D" /></>}
             </Pressable>
 
-            <View style={styles.dividerRow}><View style={styles.divider} /><Text style={styles.dividerText}>Preview access</Text><View style={styles.divider} /></View>
-            <View style={styles.previewCard}>
-              <View style={styles.previewIcon}><Ionicons name="flask-outline" size={18} color="#8A5A00" /></View>
-              <View style={styles.previewCopy}><Text style={styles.previewTitle}>Administrator credentials</Text><Text style={styles.previewDetail}>Username <Text style={styles.previewStrong}>GGMAdminAman</Text> · Password <Text style={styles.previewStrong}>GGM2026</Text></Text></View>
-            </View>
           </View>
 
           <View style={styles.footerTrust}>
@@ -171,15 +186,6 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: "#14532D", fontSize: 14, fontWeight: "800" },
   secondaryButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, marginTop: 10, paddingVertical: 11 },
   secondaryButtonText: { color: "#28723B", fontSize: 13, fontWeight: "800" },
-  dividerRow: { flexDirection: "row", alignItems: "center", gap: 9, marginTop: 20 },
-  divider: { flex: 1, height: 1, backgroundColor: "#E8EFE7" },
-  dividerText: { color: "#8A9A8D", fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 },
-  previewCard: { flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 15, backgroundColor: "#FFF9E4", padding: 12, marginTop: 13 },
-  previewIcon: { width: 33, height: 33, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: "#FFF0B3" },
-  previewCopy: { flex: 1 },
-  previewTitle: { color: "#5F4A10", fontSize: 12, fontWeight: "800" },
-  previewDetail: { color: "#7A651E", fontSize: 10, marginTop: 3 },
-  previewStrong: { color: "#5F4A10", fontWeight: "800" },
   footerTrust: { flexDirection: "row", alignSelf: "center", alignItems: "center", gap: 6, paddingHorizontal: 8, paddingBottom: 5 },
   footerTrustText: { color: "#718278", fontSize: 11, textAlign: "center" },
   pressed: { opacity: 0.76, transform: [{ scale: 0.98 }] },

@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { ScreenContainer } from "@/components/screen-container";
@@ -22,8 +22,14 @@ export default function AdminVerificationScreen() {
   const reviewDocument = trpc.admin.verification.reviewDocument.useMutation({ onSuccess: () => void utils.admin.verification.documents.invalidate() });
   const reviewPayout = trpc.admin.verification.reviewPayout.useMutation({ onSuccess: () => void utils.admin.verification.payouts.invalidate() });
   const reviewProduct = trpc.admin.verification.reviewProduct.useMutation({ onSuccess: () => void utils.admin.verification.products.invalidate() });
-  const approveSeller = trpc.admin.sellers.approve.useMutation({ onSuccess: () => void Promise.all([utils.admin.sellers.pending.invalidate(), utils.admin.sellers.list.invalidate()]) });
-  const rejectSeller = trpc.admin.sellers.reject.useMutation({ onSuccess: () => void Promise.all([utils.admin.sellers.pending.invalidate(), utils.admin.sellers.list.invalidate()]) });
+  const approveSeller = trpc.admin.sellers.approve.useMutation({
+    onSuccess: () => void Promise.all([utils.admin.sellers.pending.invalidate(), utils.admin.sellers.list.invalidate()]),
+    onError: (error) => Alert.alert("Seller approval failed", error.message),
+  });
+  const rejectSeller = trpc.admin.sellers.reject.useMutation({
+    onSuccess: () => void Promise.all([utils.admin.sellers.pending.invalidate(), utils.admin.sellers.list.invalidate()]),
+    onError: (error) => Alert.alert("Seller rejection failed", error.message),
+  });
   const pendingSellers = (pendingSellersQuery.data ?? []) as PendingSeller[];
   const docs = (docsQuery.data ?? []) as ReviewDocument[];
   const payouts = (payoutsQuery.data ?? []) as ReviewPayout[];
