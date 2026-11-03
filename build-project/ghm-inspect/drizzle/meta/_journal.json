@@ -169,6 +169,13 @@
       "when": 1792384472785,
       "tag": "0023_faithful_lily_hollister",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1793664000000,
+      "tag": "0024_encrypted_seller_document_blobs",
+      "breakpoints": true
     }
   ]
 }
