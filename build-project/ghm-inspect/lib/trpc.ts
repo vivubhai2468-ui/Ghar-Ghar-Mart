@@ -15,7 +15,9 @@ export function createTRPCClient() {
     links: [
       splitLink({
         // All admin-router operations use the administrator token.
-        condition: (op) => op.path.startsWith("admin."),
+        condition: (op) =>
+          op.path.startsWith("admin.") ||
+          op.path === "seller.catalog.uploadImage",
 
         true: httpBatchLink({
           url,
