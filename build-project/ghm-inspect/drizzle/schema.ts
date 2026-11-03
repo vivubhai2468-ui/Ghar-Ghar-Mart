@@ -593,3 +593,10 @@ export const devicePushTokens = mysqlTable("devicePushTokens", {
 
 export type DevicePushToken = typeof devicePushTokens.$inferSelect;
 export type InsertDevicePushToken = typeof devicePushTokens.$inferInsert;
+
+export const productImageBlobs = mysqlTable("productImageBlobs", {
+  id: int("id").autoincrement().primaryKey(),
+  mimeType: varchar("mimeType", { length: 100 }).notNull(),
+  imageData: longblob("imageData").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});

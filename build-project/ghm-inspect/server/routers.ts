@@ -1142,11 +1142,12 @@ export const appRouter = router({
           }
           const bytes = Buffer.from(input.contentBase64, "base64");
           if (!bytes.length || bytes.length > 5 * 1024 * 1024) throw new Error("Images must be less than 5 MB");
-          const extension = input.mimeType === "image/png" ? "png" : input.mimeType === "image/webp" ? "webp" : "jpg";
-          const storageKey = role === "admin"
-            ? `admin-products/${ctx.user.id}/${Date.now()}.${extension}`
-            : `seller-products/${ctx.user.id}/product.${extension}`;
-          return storagePut(storageKey, bytes, input.mimeType);
+          const id = await db.saveProductImageBlob(bytes, input.mimeType);
+
+          return {
+            key: String(id),
+            url: `/api/product-images/${id}`,
+          };
         }),
     }),
 

@@ -11,7 +11,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { logServerError } from "./logger";
-import { getDb } from "../db";
+import { getDb, getProductImageBlob } from "../db";
 import { ADMIN_PREVIEW_OPEN_ID_PREFIX, sdk } from "./sdk";
 
 async function startServer() {
@@ -129,6 +129,35 @@ async function startServer() {
 
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+
+  app.get("/api/product-images/:id", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isSafeInteger(id) || id <= 0) {
+        res.status(400).send("Invalid image ID");
+        return;
+      }
+
+      const image = await getProductImageBlob(id);
+
+      if (!image) {
+        res.status(404).send("Image not found");
+        return;
+      }
+
+      res.set({
+        "Content-Type": image.mimeType,
+        "Cache-Control": "public, max-age=31536000, immutable",
+        "X-Content-Type-Options": "nosniff",
+      });
+
+      res.send(image.imageData);
+    } catch (error) {
+      console.error("[ProductImage] Failed to serve image:", error);
+      res.status(500).send("Could not load image");
+    }
+  });
 
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, timestamp: Date.now() });
