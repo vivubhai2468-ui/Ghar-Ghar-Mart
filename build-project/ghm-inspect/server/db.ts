@@ -52,6 +52,7 @@ import {
   devicePushTokens,
   phoneOtpChallenges,
   sellerDocuments,
+  sellerDocumentBlobs,
   sellerPayoutProfiles,
   regionalInventories,
   customerAddresses,
@@ -1398,11 +1399,34 @@ export async function findOrCreatePhoneUser(input: { phone: string; name?: strin
 
 // ============= SELLER VERIFICATION, PAYOUTS, AND PRODUCT MODERATION =============
 
-export async function createSellerDocumentRecord(data: InsertSellerDocument) {
+export async function createSellerDocumentRecord(data: InsertSellerDocument, encrypted: { encryptedData: Buffer; iv: Buffer; authTag: Buffer }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(sellerDocuments).values(data);
-  return Number(result.insertId);
+  return db.transaction(async (tx: any) => {
+    const result = await tx.insert(sellerDocuments).values(data);
+    const documentId = Number(result.insertId);
+    if (!Number.isSafeInteger(documentId) || documentId <= 0) throw new Error("Could not create document record");
+    await tx.insert(sellerDocumentBlobs).values({ documentId, ...encrypted, keyVersion: 1 });
+    return documentId;
+  });
+}
+
+export async function getSellerDocumentBlob(documentId: number, sellerId?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const conditions = [eq(sellerDocuments.id, documentId)];
+  if (sellerId !== undefined) conditions.push(eq(sellerDocuments.sellerId, sellerId));
+  const rows = await db.select({
+    id: sellerDocuments.id,
+    sellerId: sellerDocuments.sellerId,
+    originalName: sellerDocuments.originalName,
+    mimeType: sellerDocuments.mimeType,
+    encryptedData: sellerDocumentBlobs.encryptedData,
+    iv: sellerDocumentBlobs.iv,
+    authTag: sellerDocumentBlobs.authTag,
+    keyVersion: sellerDocumentBlobs.keyVersion,
+  }).from(sellerDocuments).innerJoin(sellerDocumentBlobs, eq(sellerDocumentBlobs.documentId, sellerDocuments.id)).where(and(...conditions)).limit(1);
+  return rows[0] ?? null;
 }
 
 export async function getSellerDocumentRecords(sellerId: number) {
