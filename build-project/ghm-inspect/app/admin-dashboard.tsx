@@ -350,6 +350,69 @@ export default function AdminDashboardScreen() {
   };
 
   const pickProductImage = async () => {
+    // Use a native browser file picker on web.
+    if (Platform.OS === "web") {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/jpeg,image/png,image/webp";
+
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+
+        try {
+          if (file.size > 5 * 1024 * 1024) {
+            throw new Error("Choose an image smaller than 5 MB");
+          }
+
+          const reader = new FileReader();
+
+          reader.onload = async () => {
+            try {
+              const base64 = String(reader.result).split(",")[1];
+              if (!base64) throw new Error("Could not read image");
+
+              const mimeType =
+                file.type === "image/png" || file.type === "image/webp"
+                  ? file.type
+                : "image/jpeg";
+
+              const uploaded = await uploadProductImage.mutateAsync({
+                mimeType,
+                contentBase64: base64,
+              });
+
+              setProductDraft((current) => ({
+                ...current,
+                imageUrl: uploaded.url,
+              }));
+              Alert.alert("Image uploaded", "Image is ready to save.");
+            } catch (error) {
+              Alert.alert(
+                "Image upload failed",
+                getUserFacingError(error, "Please try another image.")
+              );
+            }
+          };
+
+          reader.onerror = () => {
+            Alert.alert("Image upload failed", "Could not read the selected image.");
+          };
+
+          reader.readAsDataURL(file);
+        } catch (error) {
+          Alert.alert(
+            "Image upload failed",
+            getUserFacingError(error, "Please try another image.")
+          );
+        }
+      };
+
+      input.click();
+      return;
+    }
+
+    // Keep the existing Android/iOS picker flow.
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -358,16 +421,36 @@ export default function AdminDashboardScreen() {
         quality: 0.72,
         base64: true,
       });
+
       if (result.canceled) return;
+
       const asset = result.assets[0];
       if (!asset?.base64) throw new Error("Unable to prepare the selected image");
-      if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) throw new Error("Choose an image smaller than 5 MB");
-      const mimeType = asset.mimeType === "image/png" || asset.mimeType === "image/webp" ? asset.mimeType : "image/jpeg";
-      const uploaded = await uploadProductImage.mutateAsync({ mimeType, contentBase64: asset.base64 });
-      setProductDraft((current) => ({ ...current, imageUrl: uploaded.url }));
-      Alert.alert("Image uploaded", "The product image is ready to be saved with this product.");
+      if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
+        throw new Error("Choose an image smaller than 5 MB");
+      }
+
+      const mimeType =
+        asset.mimeType === "image/png" || asset.mimeType === "image/webp"
+          ? asset.mimeType
+          : "image/jpeg";
+
+      const uploaded = await uploadProductImage.mutateAsync({
+        mimeType,
+        contentBase64: asset.base64,
+      });
+
+      setProductDraft((current) => ({
+        ...current,
+        imageUrl: uploaded.url,
+      }));
+
+      Alert.alert("Image uploaded", "The product image is ready to be saved.");
     } catch (error) {
-      Alert.alert("Image upload failed", getUserFacingError(error, "Choose a JPG, PNG or WebP image under 5 MB and try again."));
+      Alert.alert(
+        "Image upload failed",
+        getUserFacingError(error, "Choose an image under 5 MB and try again.")
+      );
     }
   };
 
