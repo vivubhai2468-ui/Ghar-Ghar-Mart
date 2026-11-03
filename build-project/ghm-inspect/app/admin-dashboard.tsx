@@ -17,6 +17,7 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { getApiBaseUrl } from "@/constants/oauth";
 import { getUserFacingError } from "@/lib/user-facing-error";
 import { useAdminAuth } from "@/lib/admin-auth-context";
 import { trpc } from "@/lib/trpc";
@@ -409,7 +410,7 @@ export default function AdminDashboardScreen() {
 
               setProductDraft((current) => ({
                 ...current,
-                imageUrl: uploaded.url,
+                imageUrl: new URL(uploaded.url, getApiBaseUrl()).toString(),
               }));
               Alert.alert("Image uploaded", "Image is ready to save.");
             } catch (error) {
@@ -467,7 +468,7 @@ export default function AdminDashboardScreen() {
 
       setProductDraft((current) => ({
         ...current,
-        imageUrl: uploaded.url,
+        imageUrl: new URL(uploaded.url, getApiBaseUrl()).toString(),
       }));
 
       Alert.alert("Image uploaded", "The product image is ready to be saved.");
@@ -498,7 +499,11 @@ export default function AdminDashboardScreen() {
       updateProduct.mutate({ id: editingProductId, name: productDraft.name.trim(), description: productDraft.description.trim() || null, price, originalPrice: productDraft.originalPrice.trim() ? Number(productDraft.originalPrice) : null, discount: productDraft.discount.trim() ? Number(productDraft.discount) : 0, stock });
       return;
     }
-    createProduct.mutate({ categoryId, name: productDraft.name.trim(), description: productDraft.description.trim() || undefined, price, originalPrice: productDraft.originalPrice.trim() ? Number(productDraft.originalPrice) : undefined, discount: productDraft.discount.trim() ? Number(productDraft.discount) : undefined, stock, images: productDraft.imageUrl ? [productDraft.imageUrl] : undefined, publishImmediately: productDraft.publishImmediately });
+    createProduct.mutate({ categoryId, name: productDraft.name.trim(), description: productDraft.description.trim() || undefined, price, originalPrice: productDraft.originalPrice.trim() ? Number(productDraft.originalPrice) : undefined, discount: productDraft.discount.trim() ? Number(productDraft.discount) : undefined, stock, images:
+      productDraft.imageUrl.trim() &&
+      /^https?:\/\/[^\s]+$/i.test(productDraft.imageUrl.trim())
+        ? [productDraft.imageUrl.trim()]
+        : undefined, publishImmediately: productDraft.publishImmediately });
   };
 
   const stats = [
