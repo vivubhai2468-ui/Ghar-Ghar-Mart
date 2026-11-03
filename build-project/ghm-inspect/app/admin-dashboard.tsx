@@ -131,8 +131,20 @@ export default function AdminDashboardScreen() {
   const dashboardQuery = trpc.admin.dashboard.useQuery(undefined, { ...liveQueryOptions, enabled: Boolean(adminUser) && activeTab === "overview" });
   const updateOrderStatus = trpc.admin.orders.updateStatus.useMutation({ onSuccess: () => void Promise.all([utils.admin.orders.list.invalidate(), utils.admin.dashboard.invalidate()]) });
   const updatePaymentStatus = trpc.admin.orders.updatePaymentStatus.useMutation({ onSuccess: () => { void utils.admin.orders.list.invalidate(); Alert.alert("Payment updated", "The payment review status has been saved."); } });
-  const approveSeller = trpc.admin.sellers.approve.useMutation({ onSuccess: () => void Promise.all([utils.admin.sellers.list.invalidate(), utils.admin.dashboard.invalidate()]) });
-  const rejectSeller = trpc.admin.sellers.reject.useMutation({ onSuccess: () => void Promise.all([utils.admin.sellers.list.invalidate(), utils.admin.dashboard.invalidate()]) });
+  const approveSeller = trpc.admin.sellers.approve.useMutation({
+    onSuccess: () => void Promise.all([
+      utils.admin.sellers.list.invalidate(),
+      utils.admin.dashboard.invalidate(),
+    ]),
+    onError: (error) => Alert.alert("Approval failed", error.message),
+  });
+  const rejectSeller = trpc.admin.sellers.reject.useMutation({
+    onSuccess: () => void Promise.all([
+      utils.admin.sellers.list.invalidate(),
+      utils.admin.dashboard.invalidate(),
+    ]),
+    onError: (error) => Alert.alert("Rejection failed", error.message),
+  });
   const updateProductStatus = trpc.admin.products.updateStatus.useMutation({ onSuccess: () => void Promise.all([utils.admin.products.list.invalidate(), utils.admin.dashboard.invalidate()]) });
   const updateProduct = trpc.admin.products.update.useMutation({
     onSuccess: async () => {
@@ -198,7 +210,20 @@ export default function AdminDashboardScreen() {
         "The product is unassigned and hidden from shoppers. Assign it to an approved, active seller from the Sellers tab."
       );
     },
-    onError: (error) => Alert.alert("Product was not saved", getUserFacingError(error, "Please check the product details and try again.")),
+    onError: (error) => {
+      const message = getUserFacingError(
+        error,
+        "Please check the product details and try again."
+      );
+
+      console.error("[Create product failed]", error);
+
+      if (Platform.OS === "web") {
+        window.alert(message);
+      } else {
+        Alert.alert("Product was not saved", message);
+      }
+    },
   });
   const orders = useMemo<AdminOrder[]>(() => (ordersQuery.data as LiveOrder[] | undefined ?? []).map((order: LiveOrder) => ({ id: order.id, orderNumber: order.orderNumber, customer: `Customer #${order.userId}`, amount: Number(order.total), shippingCost: Number(order.shippingCost ?? 0), deliveryDistanceKm: order.deliveryDistanceKm == null ? null : Number(order.deliveryDistanceKm), paymentStatus: order.paymentStatus, paymentProofUrl: order.paymentProofUrl, status: order.status, date: new Date(order.createdAt).toLocaleString(), items: 0 })), [ordersQuery.data]);
   const catalogueRecords = useMemo(() => {
