@@ -58,6 +58,7 @@ import {
   customerAddresses,
   homeOfferBanners,
   customerPasswordResetTokens,
+  productImageBlobs,
   type InsertProduct,
   type Order,
   type InsertOrder,
@@ -1906,4 +1907,37 @@ export async function getDeliveryPartnerApprovalState(partnerId: number) {
   const partner = await getUserById(partnerId);
   if (!partner || partner.role !== "delivery_partner") throw new Error("Delivery partner account not found");
   return { status: partner.deliveryPartnerStatus ?? "pending", isActive: partner.isActive, name: partner.name, aadhaarLast4: partner.aadhaarLast4 };
+}
+
+export async function saveProductImageBlob(
+  imageData: Buffer,
+  mimeType: string,
+): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [inserted] = await db
+    .insert(productImageBlobs)
+    .values({ imageData, mimeType })
+    .$returningId();
+
+  const id = Number(inserted?.id);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    throw new Error("Could not save product image");
+  }
+
+  return id;
+}
+
+export async function getProductImageBlob(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const rows = await db
+    .select()
+    .from(productImageBlobs)
+    .where(eq(productImageBlobs.id, id))
+    .limit(1);
+
+  return rows[0] ?? null;
 }
