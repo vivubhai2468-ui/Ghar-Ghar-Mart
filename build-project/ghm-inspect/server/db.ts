@@ -1399,9 +1399,13 @@ export async function findOrCreatePhoneUser(input: { phone: string; name?: strin
 
 // ============= SELLER VERIFICATION, PAYOUTS, AND PRODUCT MODERATION =============
 
-export async function createSellerDocumentRecord(data: InsertSellerDocument, encrypted: { encryptedData: Buffer; iv: Buffer; authTag: Buffer }) {
+export async function createSellerDocumentRecord(
+  data: InsertSellerDocument,
+  encrypted: { encryptedData: Buffer; iv: Buffer; authTag: Buffer }
+) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+
   return db.transaction(async (tx: any) => {
     const [inserted] = await tx
       .insert(sellerDocuments)
@@ -1409,10 +1413,17 @@ export async function createSellerDocumentRecord(data: InsertSellerDocument, enc
       .$returningId();
 
     const documentId = Number(inserted?.id);
+
     if (!Number.isSafeInteger(documentId) || documentId <= 0) {
       throw new Error("Could not create document record");
     }
-    await tx.insert(sellerDocumentBlobs).values({ documentId, ...encrypted, keyVersion: 1 });
+
+    await tx.insert(sellerDocumentBlobs).values({
+      documentId,
+      ...encrypted,
+      keyVersion: 1,
+    });
+
     return documentId;
   });
 }
