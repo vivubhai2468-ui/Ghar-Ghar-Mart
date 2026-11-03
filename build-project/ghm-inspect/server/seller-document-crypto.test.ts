@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("seller document encryption", () => {
   beforeEach(() => {
+    vi.resetModules();
     process.env.SELLER_DOCUMENT_ENCRYPTION_KEY = "0123456789abcdef".repeat(4);
   });
 
