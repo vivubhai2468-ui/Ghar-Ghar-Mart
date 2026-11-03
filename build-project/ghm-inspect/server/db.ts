@@ -1403,9 +1403,15 @@ export async function createSellerDocumentRecord(data: InsertSellerDocument, enc
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.transaction(async (tx: any) => {
-    const result = await tx.insert(sellerDocuments).values(data);
-    const documentId = Number(result.insertId);
-    if (!Number.isSafeInteger(documentId) || documentId <= 0) throw new Error("Could not create document record");
+    const [inserted] = await tx
+      .insert(sellerDocuments)
+      .values(data)
+      .$returningId();
+
+    const documentId = Number(inserted?.id);
+    if (!Number.isSafeInteger(documentId) || documentId <= 0) {
+      throw new Error("Could not create document record");
+    }
     await tx.insert(sellerDocumentBlobs).values({ documentId, ...encrypted, keyVersion: 1 });
     return documentId;
   });
