@@ -1622,7 +1622,7 @@ export const appRouter = router({
 
       getDocument: protectedProcedure
         .input(z.object({ documentId: z.number().int().positive() }))
-        .query(async ({ ctx, input }) => {
+        .mutation(async ({ ctx, input }) => {
           if (ctx.user?.role !== "admin") throw new Error("Only admins can access seller documents");
           const stored = await db.getSellerDocumentBlob(input.documentId);
           if (!stored) throw new Error("Document not found");

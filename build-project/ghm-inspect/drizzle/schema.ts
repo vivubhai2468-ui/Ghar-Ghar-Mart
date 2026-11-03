@@ -8,9 +8,13 @@ import {
   decimal,
   boolean,
   json,
-  longblob,
+  customType,
   varbinary
 } from "drizzle-orm/mysql-core";
+
+const longblob = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => "longblob",
+});
 
 /**
  * Core user table backing auth flow.
