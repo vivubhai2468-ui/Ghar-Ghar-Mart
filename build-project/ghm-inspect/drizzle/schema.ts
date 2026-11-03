@@ -7,8 +7,14 @@ import {
   varchar,
   decimal,
   boolean,
-  json
+  json,
+  customType,
+  varbinary
 } from "drizzle-orm/mysql-core";
+
+const longblob = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => "longblob",
+});
 
 /**
  * Core user table backing auth flow.
@@ -224,6 +230,15 @@ export const sellerDocuments = mysqlTable("sellerDocuments", {
 /**
  * Payout setup reference. Full bank-account numbers are never persisted in the app database.
  */
+export const sellerDocumentBlobs = mysqlTable("sellerDocumentBlobs", {
+  documentId: int("documentId").primaryKey().references(() => sellerDocuments.id, { onDelete: "cascade" }),
+  encryptedData: longblob("encryptedData").notNull(),
+  iv: varbinary("iv", { length: 12 }).notNull(),
+  authTag: varbinary("authTag", { length: 16 }).notNull(),
+  keyVersion: int("keyVersion").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
 export const sellerPayoutProfiles = mysqlTable("sellerPayoutProfiles", {
   id: int("id").autoincrement().primaryKey(),
   sellerId: int("sellerId").notNull().unique(),

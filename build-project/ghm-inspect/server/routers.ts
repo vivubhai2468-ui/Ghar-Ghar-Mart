@@ -10,6 +10,7 @@ import { sendAuthenticationOtp } from "./auth-sms";
 import { sendDeliveryPush } from "./delivery-push";
 import { sendDeliveryConfirmationSms } from "./delivery-sms";
 import { storagePut } from "./storage";
+import { decryptSellerDocument, encryptSellerDocument } from "./seller-document-crypto";
 import { getRoadRoute } from "./routing";
 import { reverseGeocodeIndianAddress, searchIndianAddresses } from "./geocoding";
 import { quoteDeliveryCharge } from "./delivery-pricing";
@@ -1073,6 +1074,16 @@ export const appRouter = router({
         return db.getSellerDocumentRecords(ctx.user.id);
       }),
 
+      getFile: protectedProcedure
+        .input(z.object({ documentId: z.number().int().positive() }))
+        .query(async ({ ctx, input }) => {
+          if (ctx.user?.role !== "seller") throw new Error("Only sellers can access their verification documents");
+          const stored = await db.getSellerDocumentBlob(input.documentId, ctx.user.id);
+          if (!stored) throw new Error("Document not found");
+          const bytes = decryptSellerDocument(stored);
+          return { documentId: stored.id, originalName: stored.originalName, mimeType: stored.mimeType, contentBase64: bytes.toString("base64") };
+        }),
+
       upload: protectedProcedure
         .input(z.object({
           documentType: z.enum(["aadhaar_card", "address_proof", "business_license"]),
@@ -1082,11 +1093,24 @@ export const appRouter = router({
         }))
         .mutation(async ({ ctx, input }) => {
           if (ctx.user?.role !== "seller") throw new Error("Only sellers can upload verification documents");
+          if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(input.contentBase64)) throw new Error("Invalid document encoding");
           const bytes = Buffer.from(input.contentBase64, "base64");
           if (!bytes.length || bytes.length > 5 * 1024 * 1024) throw new Error("Documents must be less than 5 MB");
-          const extension = input.mimeType === "application/pdf" ? "pdf" : input.mimeType === "image/png" ? "png" : "jpg";
-          const saved = await storagePut(`seller-documents/${ctx.user.id}/${input.documentType}.${extension}`, bytes, input.mimeType);
-          return db.createSellerDocumentRecord({ sellerId: ctx.user.id, documentType: input.documentType, fileUrl: saved.url, fileKey: saved.key, originalName: input.originalName, mimeType: input.mimeType, status: "pending" });
+          const validSignature =
+            (input.mimeType === "application/pdf" && bytes.subarray(0, 5).toString("ascii") === "%PDF-") ||
+            (input.mimeType === "image/jpeg" && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) ||
+            (input.mimeType === "image/png" && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])));
+          if (!validSignature) throw new Error("The selected file does not match its declared document type");
+          const encrypted = encryptSellerDocument(bytes);
+          return db.createSellerDocumentRecord({
+            sellerId: ctx.user.id,
+            documentType: input.documentType,
+            fileUrl: "tidb://seller-documents/private",
+            fileKey: "tidb-encrypted",
+            originalName: input.originalName,
+            mimeType: input.mimeType,
+            status: "pending",
+          }, encrypted);
         }),
     }),
 
@@ -1595,6 +1619,16 @@ export const appRouter = router({
         if (ctx.user?.role !== "admin") throw new Error("Only admins can review seller documents");
         return db.getPendingSellerDocumentRecords();
       }),
+
+      getDocument: protectedProcedure
+        .input(z.object({ documentId: z.number().int().positive() }))
+        .mutation(async ({ ctx, input }) => {
+          if (ctx.user?.role !== "admin") throw new Error("Only admins can access seller documents");
+          const stored = await db.getSellerDocumentBlob(input.documentId);
+          if (!stored) throw new Error("Document not found");
+          const bytes = decryptSellerDocument(stored);
+          return { documentId: stored.id, originalName: stored.originalName, mimeType: stored.mimeType, contentBase64: bytes.toString("base64") };
+        }),
 
       reviewDocument: protectedProcedure
         .input(z.object({ documentId: z.number(), status: z.enum(["approved", "rejected"]), note: z.string().max(1000).optional() }))
