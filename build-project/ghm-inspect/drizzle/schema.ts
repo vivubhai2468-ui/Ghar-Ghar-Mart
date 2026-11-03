@@ -227,7 +227,7 @@ export const sellerDocuments = mysqlTable("sellerDocuments", {
  * Payout setup reference. Full bank-account numbers are never persisted in the app database.
  */
 export const sellerDocumentBlobs = mysqlTable("sellerDocumentBlobs", {
-  documentId: int("documentId").primaryKey(),
+  documentId: int("documentId").primaryKey().references(() => sellerDocuments.id, { onDelete: "cascade" }),
   encryptedData: longblob("encryptedData").notNull(),
   iv: varbinary("iv", { length: 12 }).notNull(),
   authTag: varbinary("authTag", { length: 16 }).notNull(),
