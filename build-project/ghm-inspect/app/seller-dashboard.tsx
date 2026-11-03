@@ -5,14 +5,8 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "rea
 import { useAuth } from "@/lib/auth-context";
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
-import { useAuth } from "@/lib/auth-context";
 
 export default function SellerDashboardScreen() {
-  const { logout } = useAuth();
-  const handleLogout = async () => {
-    await logout();
-    router.replace("/login" as never);
-  };
   const { logout } = useAuth();
   const profileQuery = trpc.user.getProfile.useQuery();
   const profile = profileQuery.data;
