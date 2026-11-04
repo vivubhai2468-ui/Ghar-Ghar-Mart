@@ -9,10 +9,15 @@ import { ScreenContainer } from '@/components/screen-container';
 import type { Product } from '@/lib/products-data';
 import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/lib/auth-context';
+import { getApiBaseUrl } from '@/constants/oauth';
 
 function toCardProduct(product: any, categories: any[]): Product {
   const sellerId = Number(product.sellerId);
-  return { id: String(product.id), sellerId: Number.isInteger(sellerId) && sellerId > 0 ? sellerId : undefined, name: product.name, category: categories.find((category: any) => category.id === product.categoryId)?.name ?? 'Groceries', unit: product.description?.match(/·\s*([^·]+)/)?.[1] ?? '1 pack', price: Number(product.price), originalPrice: Number(product.originalPrice ?? product.price), discount: Number(product.discount ?? 0), rating: Number(product.rating ?? 0), reviews: Number(product.reviewCount ?? 0), image: product.images?.[0] ?? 'https://via.placeholder.com/400x400?text=Grocery', stock: Number(product.stock ?? 0), description: product.description ?? 'Everyday grocery essential' };
+  return { id: String(product.id), sellerId: Number.isInteger(sellerId) && sellerId > 0 ? sellerId : undefined, name: product.name, category: categories.find((category: any) => category.id === product.categoryId)?.name ?? 'Groceries', unit: product.description?.match(/·\s*([^·]+)/)?.[1] ?? '1 pack', price: Number(product.price), originalPrice: Number(product.originalPrice ?? product.price), discount: Number(product.discount ?? 0), rating: Number(product.rating ?? 0), reviews: Number(product.reviewCount ?? 0), image: product.images?.[0]
+    ? product.images[0].startsWith("/")
+      ? `${getApiBaseUrl().replace(/\/$/, "")}${product.images[0]}`
+      : product.images[0]
+    : 'https://via.placeholder.com/400x400?text=Grocery', stock: Number(product.stock ?? 0), description: product.description ?? 'Everyday grocery essential' };
 }
 
 export default function HomeScreen() {

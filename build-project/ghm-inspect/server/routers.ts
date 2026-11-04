@@ -1452,6 +1452,23 @@ export const appRouter = router({
           return getAdminOrders(input?.limit ?? 100, 0);
         }),
 
+      getPaymentProof: protectedProcedure
+        .input(z.object({ orderId: z.number().int().positive() }))
+        .query(async ({ ctx, input }) => {
+          if (ctx.user?.role !== "admin") throw new Error("Only admins can view payment proofs");
+          const order = await db.getOrderById(input.orderId);
+          if (!order) throw new Error("Order not found");
+          if (order.paymentMethod !== "online") throw new Error("This order does not use online payment");
+          const proof = await db.getPaymentProofBlob(input.orderId);
+          if (!proof) throw new Error("No payment screenshot has been uploaded");
+          const decrypted = decryptSellerDocument({
+            encryptedData: proof.encryptedData,
+            iv: proof.iv,
+            authTag: proof.authTag,
+          });
+          return { contentType: proof.contentType, base64Data: decrypted.toString("base64") };
+        }),
+
       updateStatus: protectedProcedure
         .input(z.object({ id: z.number(), status: z.enum(["pending", "confirmed", "packed", "shipped", "delivered", "cancelled"]) }))
         .mutation(async ({ ctx, input }) => {

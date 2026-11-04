@@ -227,7 +227,17 @@ export default function CheckoutScreen() {
         })),
       });
       if (paymentMethod === 'online' && paymentProof) {
-        await uploadPaymentProof.mutateAsync({ orderId: order.orderId, base64Data: paymentProof.base64Data, contentType: paymentProof.contentType });
+        try {
+          await uploadPaymentProof.mutateAsync({ orderId: order.orderId, base64Data: paymentProof.base64Data, contentType: paymentProof.contentType });
+        } catch (proofError) {
+          clearCart();
+          Alert.alert(
+            'Order created — proof upload failed',
+            `Order ${order.orderId} was created, but the payment screenshot could not be uploaded. Do not place the order again. Please contact support and quote this order ID.\n\n${getUserFacingError(proofError, 'Please try again later.')}`,
+            [{ text: 'OK', onPress: () => router.replace({ pathname: '/order-tracking', params: { orderId: String(order.orderId) } }) }]
+          );
+          return;
+        }
       }
       clearCart();
       Alert.alert('Order placed successfully', `Order ${order.orderId} is confirmed.\n\nYour delivery OTP: ${order.deliveryOtp}\nShare this 4-digit OTP with the delivery partner only when your order arrives.\n\nCalculated order total: ₹${order.total.toFixed(2)}\nDelivery charge: ₹${order.deliveryCharge.toFixed(2)} (${order.deliveryDistanceKm.toFixed(1)} km)\n\n${paymentMethod === 'online' ? 'Payment proof is awaiting admin confirmation.' : 'Cash will be collected when the rider arrives.'}`, [

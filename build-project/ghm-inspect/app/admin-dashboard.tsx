@@ -17,6 +17,7 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { getApiBaseUrl } from "@/constants/oauth";
 import { getUserFacingError } from "@/lib/user-facing-error";
 import { useAdminAuth } from "@/lib/admin-auth-context";
 import { trpc } from "@/lib/trpc";
@@ -120,6 +121,7 @@ export default function AdminDashboardScreen() {
   const router = useRouter();
   const { adminUser, adminLogout } = useAdminAuth();
   const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const [selectedOrder, setSelectedOrder] = useState<AdminOrder | null>(null);
   const utils = trpc.useUtils();
   const liveQueryOptions = { enabled: Boolean(adminUser), refetchInterval: 15000, refetchOnWindowFocus: true };
   const ordersQuery = trpc.admin.orders.list.useQuery({ limit: 100 }, { ...liveQueryOptions, refetchInterval: 2000, staleTime: 0 });
@@ -131,8 +133,27 @@ export default function AdminDashboardScreen() {
   const dashboardQuery = trpc.admin.dashboard.useQuery(undefined, { ...liveQueryOptions, enabled: Boolean(adminUser) && activeTab === "overview" });
   const updateOrderStatus = trpc.admin.orders.updateStatus.useMutation({ onSuccess: () => void Promise.all([utils.admin.orders.list.invalidate(), utils.admin.dashboard.invalidate()]) });
   const updatePaymentStatus = trpc.admin.orders.updatePaymentStatus.useMutation({ onSuccess: () => { void utils.admin.orders.list.invalidate(); Alert.alert("Payment updated", "The payment review status has been saved."); } });
-  const approveSeller = trpc.admin.sellers.approve.useMutation({ onSuccess: () => void Promise.all([utils.admin.sellers.list.invalidate(), utils.admin.dashboard.invalidate()]) });
-  const rejectSeller = trpc.admin.sellers.reject.useMutation({ onSuccess: () => void Promise.all([utils.admin.sellers.list.invalidate(), utils.admin.dashboard.invalidate()]) });
+  const getPaymentProof = trpc.admin.orders.getPaymentProof.useQuery(
+    { orderId: selectedOrder?.id ?? 0 },
+    {
+      enabled: Boolean(selectedOrder?.paymentProofUrl),
+      retry: false,
+    }
+  );
+  const approveSeller = trpc.admin.sellers.approve.useMutation({
+    onSuccess: () => void Promise.all([
+      utils.admin.sellers.list.invalidate(),
+      utils.admin.dashboard.invalidate(),
+    ]),
+    onError: (error) => Alert.alert("Approval failed", error.message),
+  });
+  const rejectSeller = trpc.admin.sellers.reject.useMutation({
+    onSuccess: () => void Promise.all([
+      utils.admin.sellers.list.invalidate(),
+      utils.admin.dashboard.invalidate(),
+    ]),
+    onError: (error) => Alert.alert("Rejection failed", error.message),
+  });
   const updateProductStatus = trpc.admin.products.updateStatus.useMutation({ onSuccess: () => void Promise.all([utils.admin.products.list.invalidate(), utils.admin.dashboard.invalidate()]) });
   const updateProduct = trpc.admin.products.update.useMutation({
     onSuccess: async () => {
@@ -198,7 +219,20 @@ export default function AdminDashboardScreen() {
         "The product is unassigned and hidden from shoppers. Assign it to an approved, active seller from the Sellers tab."
       );
     },
-    onError: (error) => Alert.alert("Product was not saved", getUserFacingError(error, "Please check the product details and try again.")),
+    onError: (error) => {
+      const message = getUserFacingError(
+        error,
+        "Please check the product details and try again."
+      );
+
+      console.error("[Create product failed]", error);
+
+      if (Platform.OS === "web") {
+        window.alert(message);
+      } else {
+        Alert.alert("Product was not saved", message);
+      }
+    },
   });
   const orders = useMemo<AdminOrder[]>(() => (ordersQuery.data as LiveOrder[] | undefined ?? []).map((order: LiveOrder) => ({ id: order.id, orderNumber: order.orderNumber, customer: `Customer #${order.userId}`, amount: Number(order.total), shippingCost: Number(order.shippingCost ?? 0), deliveryDistanceKm: order.deliveryDistanceKm == null ? null : Number(order.deliveryDistanceKm), paymentStatus: order.paymentStatus, paymentProofUrl: order.paymentProofUrl, status: order.status, date: new Date(order.createdAt).toLocaleString(), items: 0 })), [ordersQuery.data]);
   const catalogueRecords = useMemo(() => {
@@ -234,7 +268,6 @@ export default function AdminDashboardScreen() {
     status: seller.shopStatus || "pending",
   })), [sellersQuery.data, catalogueRecords]);
   const people = useMemo<AdminPerson[]>(() => (customersQuery.data as LiveCustomer[] | undefined ?? []).map((customer: LiveCustomer) => ({ id: customer.id, name: customer.name || `Customer #${customer.id}`, email: customer.email || customer.phone || "No contact", orders: 0, tag: customer.isActive ? "Active account" : "Inactive account" })), [customersQuery.data]);
-  const [selectedOrder, setSelectedOrder] = useState<AdminOrder | null>(null);
   const [newStatus, setNewStatus] = useState<OrderStatus>("pending");
   const [orderStatusModal, setOrderStatusModal] = useState(false);
   const [productModal, setProductModal] = useState(false);
@@ -384,7 +417,7 @@ export default function AdminDashboardScreen() {
 
               setProductDraft((current) => ({
                 ...current,
-                imageUrl: uploaded.url,
+                imageUrl: new URL(uploaded.url, getApiBaseUrl()).toString(),
               }));
               Alert.alert("Image uploaded", "Image is ready to save.");
             } catch (error) {
@@ -442,7 +475,7 @@ export default function AdminDashboardScreen() {
 
       setProductDraft((current) => ({
         ...current,
-        imageUrl: uploaded.url,
+        imageUrl: new URL(uploaded.url, getApiBaseUrl()).toString(),
       }));
 
       Alert.alert("Image uploaded", "The product image is ready to be saved.");
@@ -473,7 +506,11 @@ export default function AdminDashboardScreen() {
       updateProduct.mutate({ id: editingProductId, name: productDraft.name.trim(), description: productDraft.description.trim() || null, price, originalPrice: productDraft.originalPrice.trim() ? Number(productDraft.originalPrice) : null, discount: productDraft.discount.trim() ? Number(productDraft.discount) : 0, stock });
       return;
     }
-    createProduct.mutate({ categoryId, name: productDraft.name.trim(), description: productDraft.description.trim() || undefined, price, originalPrice: productDraft.originalPrice.trim() ? Number(productDraft.originalPrice) : undefined, discount: productDraft.discount.trim() ? Number(productDraft.discount) : undefined, stock, images: productDraft.imageUrl ? [productDraft.imageUrl] : undefined, publishImmediately: productDraft.publishImmediately });
+    createProduct.mutate({ categoryId, name: productDraft.name.trim(), description: productDraft.description.trim() || undefined, price, originalPrice: productDraft.originalPrice.trim() ? Number(productDraft.originalPrice) : undefined, discount: productDraft.discount.trim() ? Number(productDraft.discount) : undefined, stock, images:
+      productDraft.imageUrl.trim() &&
+      /^https?:\/\/[^\s]+$/i.test(productDraft.imageUrl.trim())
+        ? [productDraft.imageUrl.trim()]
+        : undefined, publishImmediately: productDraft.publishImmediately });
   };
 
   const stats = [
@@ -837,7 +874,7 @@ export default function AdminDashboardScreen() {
             <View style={styles.modalHandle} />
             <View style={styles.modalHeading}><View><Text style={styles.modalEyebrow}>FULFILMENT UPDATE</Text><Text style={styles.modalTitle}>{selectedOrder?.orderNumber}</Text></View><Pressable onPress={() => setOrderStatusModal(false)} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}><Ionicons name="close" size={20} color="#173C25" /></Pressable></View>
             <Text style={styles.modalHelp}>Choose the next status for {selectedOrder?.customer}&apos;s order.</Text>
-            {selectedOrder?.paymentProofUrl ? <View style={styles.paymentReviewCard}><Text style={styles.paymentReviewTitle}>Online payment proof uploaded</Text><Pressable onPress={() => void Linking.openURL(selectedOrder.paymentProofUrl!)} style={({ pressed }) => [styles.paymentProofButton, pressed && styles.pressed]}><Text style={styles.paymentProofButtonText}>Open payment screenshot</Text><Ionicons name="open-outline" size={16} color="#14532D" /></Pressable><View style={styles.paymentReviewActions}><Pressable onPress={() => reviewPayment("failed")} style={({ pressed }) => [styles.paymentFailedButton, pressed && styles.pressed]}><Text style={styles.paymentFailedText}>Reject proof</Text></Pressable><Pressable onPress={() => reviewPayment("completed")} style={({ pressed }) => [styles.paymentCompletedButton, pressed && styles.pressed]}><Text style={styles.paymentCompletedText}>Confirm payment</Text></Pressable></View></View> : <Text style={styles.paymentMissingText}>No payment screenshot has been uploaded for this order.</Text>}
+            {selectedOrder?.paymentProofUrl ? <View style={styles.paymentReviewCard}><Text style={styles.paymentReviewTitle}>Online payment proof uploaded</Text>{getPaymentProof.data ? <Image source={{ uri: `data:${getPaymentProof.data.contentType};base64,${getPaymentProof.data.base64Data}` }} resizeMode="contain" style={{ width: "100%", height: 220, marginTop: 10, borderRadius: 10, backgroundColor: "#F3F6F3" }} /> : <Text style={styles.paymentMissingText}>{getPaymentProof.isLoading ? "Loading payment screenshot…" : getPaymentProof.isError ? "Could not load screenshot. Close and reopen this order to retry." : "Payment screenshot is not available."}</Text>}<View style={styles.paymentReviewActions}><Pressable onPress={() => reviewPayment("failed")} style={({ pressed }) => [styles.paymentFailedButton, pressed && styles.pressed]}><Text style={styles.paymentFailedText}>Reject proof</Text></Pressable><Pressable onPress={() => reviewPayment("completed")} style={({ pressed }) => [styles.paymentCompletedButton, pressed && styles.pressed]}><Text style={styles.paymentCompletedText}>Confirm payment</Text></Pressable></View></View> : <Text style={styles.paymentMissingText}>No payment screenshot has been uploaded for this order.</Text>}
             <View style={styles.statusPicker}>{(["pending", "confirmed", "shipped", "delivered", "cancelled"] as OrderStatus[]).map((status) => <Pressable key={status} onPress={() => setNewStatus(status)} style={({ pressed }) => [styles.statusOption, newStatus === status && styles.statusOptionActive, pressed && styles.pressed]}><StatusChip label={status} /><View style={[styles.radioOuter, newStatus === status && styles.radioOuterActive]}>{newStatus === status ? <View style={styles.radioInner} /> : null}</View></Pressable>)}</View>
             <View style={styles.modalActions}><Pressable onPress={() => setOrderStatusModal(false)} style={({ pressed }) => [styles.modalSecondaryButton, pressed && styles.pressed]}><Text style={styles.modalSecondaryText}>Cancel</Text></Pressable><Pressable onPress={confirmStatusUpdate} style={({ pressed }) => [styles.modalPrimaryButton, pressed && styles.pressed]}><Text style={styles.modalPrimaryText}>Save update</Text><Ionicons name="checkmark" size={18} color="#14532D" /></Pressable></View>
           </View>

@@ -1,11 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 
+import { useAuth } from "@/lib/auth-context";
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
 
 export default function SellerDashboardScreen() {
+  const { logout } = useAuth();
   const profileQuery = trpc.user.getProfile.useQuery();
   const profile = profileQuery.data;
   const approved = profile?.shopStatus === "approved" && profile?.isActive !== false;
@@ -13,6 +15,24 @@ export default function SellerDashboardScreen() {
   const notificationsQuery = trpc.notifications.list.useQuery(undefined, { enabled: approved, refetchInterval: 30_000 });
   const stats = dashboardQuery.data as { totalEarnings?: number; totalOrders?: number; totalProducts?: number; rating?: number } | undefined;
   const unreadAlerts = ((notificationsQuery.data ?? []) as Array<{ type: string; isRead: boolean }>).filter((notification) => (notification.type === "seller_new_order" || notification.type === "seller_low_stock") && !notification.isRead).length;
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.replace("/login");
+    } catch (error) {
+      Alert.alert("Could not log out", error instanceof Error ? error.message : "Please try again.");
+    }
+  };
+  const confirmLogout = () => {
+    Alert.alert("Log out of seller workspace?", "You will need to sign in again to manage your store.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Log out",
+        style: "destructive",
+        onPress: () => void handleLogout(),
+      },
+    ]);
+  };
 
   if (profileQuery.isLoading) {
     return <ScreenContainer className="items-center justify-center"><ActivityIndicator color="#2E7D32" /></ScreenContainer>;
@@ -25,13 +45,51 @@ export default function SellerDashboardScreen() {
     <ScreenContainer className="bg-[#F6FAF4]" containerClassName="bg-[#F6FAF4]">
       <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 40 }}>
         <View className="rounded-[28px] bg-[#14532D] p-6">
-          <Text className="text-xs font-bold uppercase tracking-[2px] text-[#BBF7D0]">Seller workspace</Text>
-          <Text className="mt-2 text-3xl font-extrabold text-white">{profile?.shopName || profile?.name || "Your Store"}</Text>
+          <View className="flex-row items-start justify-between">
+            <View className="flex-1 pr-3">
+              <View className="flex-row items-center justify-between">
+            <Text className="text-xs font-bold uppercase tracking-[2px] text-[#BBF7D0]">Seller workspace</Text>
+            <Pressable onPress={() => void handleLogout()} style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", borderRadius: 12, backgroundColor: "rgba(255,255,255,0.16)", paddingHorizontal: 12, paddingVertical: 9, opacity: pressed ? 0.65 : 1 })}>
+              <Ionicons name="log-out-outline" size={17} color="white" />
+              <Text className="ml-2 text-sm font-bold text-white">Logout</Text>
+            </Pressable>
+          </View>
+              <Text className="mt-2 text-3xl font-extrabold text-white">{profile?.shopName || profile?.name || "Your Store"}</Text>
+            </View>
+            <Pressable
+              accessibilityLabel="Log out"
+              onPress={confirmLogout}
+              style={({ pressed }) => ({ alignItems: "center", borderRadius: 14, backgroundColor: "#FFFFFF22", paddingHorizontal: 10, paddingVertical: 8, opacity: pressed ? 0.7 : 1 })}
+            >
+              <Ionicons name="log-out-outline" size={20} color="#FFFFFF" />
+              <Text className="mt-1 text-[10px] font-extrabold text-white">Log out</Text>
+            </Pressable>
+          </View>
           <Text className="mt-2 text-sm leading-5 text-[#DCFCE7]">Manage products, stock and orders from one secure business panel.</Text>
           <View className="mt-5 self-start rounded-full bg-white/15 px-3 py-2">
             <Text className="text-xs font-extrabold uppercase tracking-wide text-white">{approved ? "Approved seller" : isRejected ? "Review needs attention" : "Verification in progress"}</Text>
           </View>
         </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Log out of seller workspace"
+          onPress={confirmLogout}
+          style={({ pressed }) => ({
+            marginTop: 16,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: "#F3B6B6",
+            backgroundColor: "#FFF7F7",
+            paddingVertical: 14,
+            opacity: pressed ? 0.7 : 1,
+          })}
+        >
+          <Ionicons name="log-out-outline" size={20} color="#B91C1C" />
+          <Text className="ml-2 text-base font-extrabold text-[#B91C1C]">Log out of seller workspace</Text>
+        </Pressable>
 
         {!approved ? (
           <View className={`mt-5 rounded-3xl border p-5 ${isRejected ? "border-[#F3B6B6] bg-[#FFF7F7]" : "border-[#F8D988] bg-[#FFFBEA]"}`}>

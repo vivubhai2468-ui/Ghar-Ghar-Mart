@@ -15,17 +15,22 @@ export function createTRPCClient() {
     links: [
       splitLink({
         // All admin-router operations use the administrator token.
-        condition: (op) => op.path.startsWith("admin."),
+        condition: (op) =>
+          op.path.startsWith("admin.") ||
+          op.path === "seller.catalog.uploadImage",
 
         true: httpBatchLink({
           url,
           transformer: superjson,
           async headers() {
-            let adminToken = await AsyncStorage.getItem("admin_token");
+            // On web, prefer the token saved by the admin login.
+            let adminToken =
+              typeof window !== "undefined"
+                ? window.localStorage.getItem("admin_token")
+                : null;
 
-            // Web fallback: read the same admin session from browser storage.
-            if (!adminToken && typeof window !== "undefined") {
-              adminToken = window.localStorage.getItem("admin_token");
+            if (!adminToken) {
+              adminToken = await AsyncStorage.getItem("admin_token");
             }
 
             return adminToken

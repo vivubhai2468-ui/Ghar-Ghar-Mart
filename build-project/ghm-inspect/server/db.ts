@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import mysql from "mysql2/promise";
 import { drizzle } from "drizzle-orm/mysql2";
 import { ENV } from "./_core/env";
-import { storagePut } from "./storage";
+import { encryptSellerDocument } from "./seller-document-crypto";
 
 let dbInstance: any = null;
 const scrypt = promisify(scryptCallback);
@@ -53,6 +53,7 @@ import {
   phoneOtpChallenges,
   sellerDocuments,
   sellerDocumentBlobs,
+  paymentProofBlobs,
   sellerPayoutProfiles,
   regionalInventories,
   customerAddresses,
@@ -679,12 +680,54 @@ export async function savePaymentProof(orderId: number, userId: number, base64Da
   if (!order || order.userId !== userId) throw new Error("You can only upload proof for your own order");
   if (order.paymentMethod !== "online") throw new Error("Payment proof is only required for online payments");
   if (!base64Data || base64Data.length > 15_000_000) throw new Error("Payment proof image is missing or too large");
-  const extension = contentType === "image/png" ? "png" : "jpg";
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64Data)) {
+    throw new Error("Invalid payment screenshot data");
+  }
   const bytes = Buffer.from(base64Data, "base64");
-  if (!bytes.length) throw new Error("Payment proof image could not be read");
-  const stored = await storagePut(`payment-proofs/${userId}/${orderId}.${extension}`, bytes, contentType);
-  await database.update(orders).set({ paymentProofUrl: stored.url, paymentProofUploadedAt: new Date(), paymentStatus: "pending" }).where(eq(orders.id, orderId));
-  return { success: true, url: stored.url };
+  const isPng = bytes.subarray(0, 8).equals(
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+  );
+  const isJpeg =
+    bytes.length >= 3 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff;
+
+  if (!isPng && !isJpeg) {
+    throw new Error("Unsupported image format. Please upload a JPEG or PNG screenshot.");
+  }
+
+  const verifiedContentType = isPng ? "image/png" : "image/jpeg";
+  if (!bytes.length || bytes.length > 10 * 1024 * 1024) {
+    throw new Error("Payment proof image could not be read or is too large");
+  }
+  const encrypted = encryptSellerDocument(bytes);
+  await database.insert(paymentProofBlobs).values({
+    orderId,
+    ...encrypted,
+    contentType: verifiedContentType,
+    keyVersion: 1,
+  }).onDuplicateKeyUpdate({
+    set: { ...encrypted, contentType: verifiedContentType, keyVersion: 1 },
+  });
+  await database.update(orders).set({
+    paymentProofUrl: "encrypted-db://payment-proof",
+    paymentProofUploadedAt: new Date(),
+    paymentStatus: "pending",
+  }).where(eq(orders.id, orderId));
+  return { success: true };
+}
+
+export async function getPaymentProofBlob(orderId: number) {
+  const database = await getDb();
+  if (!database) throw new Error("Database not available");
+  const rows = await database.select({
+    encryptedData: paymentProofBlobs.encryptedData,
+    iv: paymentProofBlobs.iv,
+    authTag: paymentProofBlobs.authTag,
+    contentType: paymentProofBlobs.contentType,
+  }).from(paymentProofBlobs).where(eq(paymentProofBlobs.orderId, orderId)).limit(1);
+  return rows[0] ?? null;
 }
 
 export async function updatePaymentStatus(orderId: number, paymentStatus: "pending" | "completed" | "failed") {

@@ -12,6 +12,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { useCart } from "@/lib/cart-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { trpc } from "@/lib/trpc";
+import { getApiBaseUrl } from "@/constants/oauth";
 
 
 export default function ProductDetailScreen() {
@@ -30,7 +31,11 @@ export default function ProductDetailScreen() {
     discount: Number(liveProduct.discount ?? 0),
     rating: Number(liveProduct.rating ?? 0),
     reviews: Number(liveProduct.reviewCount ?? 0),
-    image: liveProduct.images?.[0] ?? "https://via.placeholder.com/400x400?text=Grocery",
+    image: liveProduct.images?.[0]
+      ? liveProduct.images[0].startsWith("/")
+        ? `${getApiBaseUrl().replace(/\/$/, "")}${liveProduct.images[0]}`
+        : liveProduct.images[0]
+      : "https://via.placeholder.com/400x400?text=Grocery",
     stock: Number(liveProduct.stock ?? 0),
     description: liveProduct.description ?? "Everyday grocery essential",
   } : undefined;
