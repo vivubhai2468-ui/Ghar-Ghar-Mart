@@ -58,13 +58,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const addItem = (item: Omit<CartItem, 'id'>) => {
     setItems((prevItems) => {
       // Check if item already exists
-      const existingItem = prevItems.find((i) => i.productId === item.productId);
+      const existingItem = prevItems.find((i) => String(i.productId) === String(item.productId));
 
       let newItems: CartItem[];
       if (existingItem) {
         // Increase quantity instead of adding duplicate
         newItems = prevItems.map((i) =>
-          i.productId === item.productId
+          String(i.productId) === String(item.productId)
             ? { ...i, sellerId: item.sellerId ?? i.sellerId, quantity: i.quantity + item.quantity }
             : i
         );
@@ -84,15 +84,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const removeItem = (productId: number) => {
+  const removeItem = (productId: number | string) => {
     setItems((prevItems) => {
-      const newItems = prevItems.filter((i) => i.productId !== productId);
+      const newItems = prevItems.filter((i) => String(i.productId) !== String(productId));
       saveCart(newItems);
       return newItems;
     });
   };
 
-  const updateQuantity = (productId: number, quantity: number) => {
+  const updateQuantity = (productId: number | string, quantity: number) => {
     if (quantity <= 0) {
       removeItem(productId);
       return;
@@ -100,7 +100,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
     setItems((prevItems) => {
       const newItems = prevItems.map((i) =>
-        i.productId === productId ? { ...i, quantity } : i
+        String(i.productId) === String(productId) ? { ...i, quantity } : i
       );
       saveCart(newItems);
       return newItems;
