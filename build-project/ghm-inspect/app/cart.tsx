@@ -97,7 +97,7 @@ export default function CartScreen() {
                   <View className="flex-row items-center bg-lightGreen rounded-lg p-1 w-24">
                     <Pressable
                       onPress={() =>
-                        updateQuantity(Number(item.productId), item.quantity - 1)
+                        updateQuantity(item.productId, item.quantity - 1)
                       }
                       className="px-2 py-1"
                     >
@@ -108,7 +108,7 @@ export default function CartScreen() {
                     </Text>
                     <Pressable
                       onPress={() =>
-                        updateQuantity(Number(item.productId), item.quantity + 1)
+                        updateQuantity(item.productId, item.quantity + 1)
                       }
                       className="px-2 py-1"
                     >
@@ -119,7 +119,7 @@ export default function CartScreen() {
 
                 {/* Remove Button */}
                 <Pressable
-                  onPress={() => removeItem(Number(item.productId))}
+                  onPress={() => removeItem(item.productId)}
                   className="ml-2 justify-center"
                 >
                   <Ionicons name="trash-outline" size={20} color="#D32F2F" />
