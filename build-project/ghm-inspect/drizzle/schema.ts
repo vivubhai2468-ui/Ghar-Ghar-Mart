@@ -339,6 +339,17 @@ export const orders = mysqlTable("orders", {
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
 
+/** Encrypted customer payment screenshots; never exposed through a public URL. */
+export const paymentProofBlobs = mysqlTable("paymentProofBlobs", {
+  orderId: int("orderId").primaryKey().references(() => orders.id, { onDelete: "cascade" }),
+  encryptedData: longblob("encryptedData").notNull(),
+  iv: varbinary("iv", { length: 12 }).notNull(),
+  authTag: varbinary("authTag", { length: 16 }).notNull(),
+  contentType: varchar("contentType", { length: 32 }).notNull(),
+  keyVersion: int("keyVersion").default(1).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
 /**
  * Order items table (line items in an order)
  */

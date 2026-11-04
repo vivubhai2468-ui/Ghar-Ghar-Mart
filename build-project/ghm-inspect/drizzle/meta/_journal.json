@@ -176,6 +176,13 @@
       "when": 1793664000000,
       "tag": "0024_encrypted_seller_document_blobs",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1793779204717,
+      "tag": "0025_encrypted_payment_proof_blobs",
+      "breakpoints": true
     }
   ]
 }

@@ -4,6 +4,7 @@ vi.mock("../server/geocoding", () => ({ searchIndianAddresses: vi.fn(async () =>
 vi.mock("../server/routing", () => ({ getRoadRoute: vi.fn(async () => ({ provider: "osrm", coordinates: [], distanceMeters: 3000, durationSeconds: 600, maneuvers: [] })) }));
 
 import { appRouter } from "../server/routers";
+import { encryptSellerDocument } from "../server/seller-document-crypto";
 import {
   createPhoneOtpChallenge,
   createSellerDocumentRecord,
@@ -88,7 +89,7 @@ describe("seller onboarding and operations lifecycle", () => {
       originalName: "aadhaar.pdf",
       mimeType: "application/pdf",
       status: "pending",
-    } as any);
+    } as any, encryptSellerDocument(Buffer.from("%PDF-1.4 test Aadhaar document")));
     await createSellerDocumentRecord({
       sellerId: seller.id,
       documentType: "address_proof",
@@ -97,7 +98,7 @@ describe("seller onboarding and operations lifecycle", () => {
       originalName: "address.pdf",
       mimeType: "application/pdf",
       status: "pending",
-    } as any);
+    } as any, encryptSellerDocument(Buffer.from("%PDF-1.4 test address document")));
 
     const documents = await getSellerDocumentRecords(seller.id);
     const aadhaarDocument = documents.find((document: any) => document.documentType === "aadhaar_card");
