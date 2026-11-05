@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { ScreenContainer } from "@/components/screen-container";
@@ -27,6 +27,7 @@ export default function AdminDeliveryScreen() {
   const { adminUser } = useAdminAuth();
   const utils = trpc.useUtils();
   const [selectedOrder, setSelectedOrder] = useState<DeliveryOrder | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const liveQueryOptions = { enabled: Boolean(adminUser), refetchOnWindowFocus: true };
   const ordersQuery = trpc.admin.deliveryOrders.useQuery(undefined, { ...liveQueryOptions, refetchInterval: 2000, staleTime: 0 });
   const partnersQuery = trpc.admin.deliveryPartners.useQuery(undefined, { ...liveQueryOptions, refetchInterval: 10_000 });
@@ -70,13 +71,10 @@ export default function AdminDeliveryScreen() {
   };
 
   const reviewPartner = (partner: DeliveryPartnerReview, status: "approved" | "rejected") => {
-    Alert.alert(
-      status === "approved" ? "Approve delivery partner" : "Reject delivery partner",
-      status === "approved" ? `Allow ${partner.name || "this partner"} to accept and complete delivery assignments?` : `Reject ${partner.name || "this partner"}'s delivery application?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: status === "approved" ? "Approve" : "Reject", style: status === "approved" ? "default" : "destructive", onPress: () => reviewPartnerMutation.mutate({ partnerId: partner.id, status }, { onError: (error) => Alert.alert("Review failed", error.message) }) },
-      ],
+    setReviewError(null);
+    reviewPartnerMutation.mutate(
+      { partnerId: partner.id, status },
+      { onError: (error) => setReviewError(error.message) },
     );
   };
 
@@ -123,6 +121,7 @@ export default function AdminDeliveryScreen() {
             <View className="rounded-full bg-[#FFF1B8] px-3 py-1"><Text className="text-xs font-extrabold text-[#8A5A00]">{pendingPartnerReviews.length} PENDING</Text></View>
           </View>
           {pendingPartnerReviews.length === 0 && !partnerReviewQuery.isLoading ? <Text className="mt-4 text-sm text-[#68776D]">No delivery-partner applications are waiting for review.</Text> : null}
+          {reviewError ? <Text accessibilityRole="alert" className="mt-3 rounded-xl bg-[#FEE2E2] px-3 py-2 text-sm font-semibold text-[#B42318]">{reviewError}</Text> : null}
           {pendingPartnerReviews.map((partner: DeliveryPartnerReview) => <View key={partner.id} className="mt-4 rounded-2xl border border-[#E7DCB0] bg-white p-4"><View className="flex-row items-start justify-between"><View className="flex-1 pr-3"><Text className="text-base font-extrabold text-[#173C25]">{partner.name || "Unnamed delivery partner"}</Text><Text className="mt-1 text-sm text-[#68776D]">{partner.phone || "No mobile number"}</Text><Text className="mt-1 text-xs font-semibold text-[#8A5A00]">Aadhaar verified · •••• {partner.aadhaarLast4 || "—"}</Text></View><Ionicons name="shield-checkmark-outline" size={25} color="#B77900" /></View><View className="mt-4 flex-row gap-3"><Pressable onPress={() => reviewPartner(partner, "approved")} disabled={reviewPartnerMutation.isPending} style={({ pressed }) => ({ flex: 1, alignItems: "center", borderRadius: 14, backgroundColor: "#2E7D32", paddingVertical: 11, opacity: pressed || reviewPartnerMutation.isPending ? 0.7 : 1 })}><Text className="font-extrabold text-white">Approve</Text></Pressable><Pressable onPress={() => reviewPartner(partner, "rejected")} disabled={reviewPartnerMutation.isPending} style={({ pressed }) => ({ flex: 1, alignItems: "center", borderRadius: 14, borderWidth: 1, borderColor: "#EF4444", paddingVertical: 11, opacity: pressed || reviewPartnerMutation.isPending ? 0.7 : 1 })}><Text className="font-extrabold text-[#B42318]">Reject</Text></Pressable></View></View>)}
         </View>
 
