@@ -26,6 +26,19 @@ describe("seller document encryption", () => {
     expect(decryptSellerDocument(serialized).equals(original)).toBe(true);
   });
 
+  it("decodes Latin-1 binary strings returned for SQL binary columns", async () => {
+    const { encryptSellerDocument, decryptSellerDocument } = await import("./seller-document-crypto");
+    const original = Buffer.from("%PDF-1.7 raw binary string test");
+    const encrypted = encryptSellerDocument(original);
+    const asBinaryString = (value: Buffer) => value.toString("latin1");
+    const serialized = {
+      encryptedData: asBinaryString(encrypted.encryptedData),
+      iv: asBinaryString(encrypted.iv),
+      authTag: asBinaryString(encrypted.authTag),
+    };
+    expect(decryptSellerDocument(serialized).equals(original)).toBe(true);
+  });
+
   it("reports malformed authentication-tag byte lengths clearly", async () => {
     const { encryptSellerDocument, decryptSellerDocument } = await import("./seller-document-crypto");
     const encrypted = encryptSellerDocument(Buffer.from("document"));
