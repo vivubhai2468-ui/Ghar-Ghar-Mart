@@ -721,10 +721,12 @@ export async function savePaymentProof(orderId: number, userId: number, base64Da
 export async function getPaymentProofBlob(orderId: number) {
   const database = await getDb();
   if (!database) throw new Error("Database not available");
+  // HEX() keeps encrypted binary columns in a stable ASCII representation
+  // across MySQL/TiDB adapters before AES-GCM decryption.
   const rows = await database.select({
-    encryptedData: paymentProofBlobs.encryptedData,
-    iv: paymentProofBlobs.iv,
-    authTag: paymentProofBlobs.authTag,
+    encryptedData: sql<string>`HEX(${paymentProofBlobs.encryptedData})`,
+    iv: sql<string>`HEX(${paymentProofBlobs.iv})`,
+    authTag: sql<string>`HEX(${paymentProofBlobs.authTag})`,
     contentType: paymentProofBlobs.contentType,
   }).from(paymentProofBlobs).where(eq(paymentProofBlobs.orderId, orderId)).limit(1);
   return rows[0] ?? null;
