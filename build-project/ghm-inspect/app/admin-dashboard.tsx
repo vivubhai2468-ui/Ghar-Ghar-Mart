@@ -132,7 +132,13 @@ export default function AdminDashboardScreen() {
   const categoriesQuery = trpc.categories.list.useQuery(undefined, { enabled: Boolean(adminUser), refetchOnWindowFocus: true });
   const dashboardQuery = trpc.admin.dashboard.useQuery(undefined, { ...liveQueryOptions, enabled: Boolean(adminUser) && activeTab === "overview" });
   const updateOrderStatus = trpc.admin.orders.updateStatus.useMutation({ onSuccess: () => void Promise.all([utils.admin.orders.list.invalidate(), utils.admin.dashboard.invalidate()]) });
-  const updatePaymentStatus = trpc.admin.orders.updatePaymentStatus.useMutation({ onSuccess: () => { void utils.admin.orders.list.invalidate(); Alert.alert("Payment updated", "The payment review status has been saved."); } });
+  const updatePaymentStatus = trpc.admin.orders.updatePaymentStatus.useMutation({
+    onSuccess: () => {
+      void Promise.all([utils.admin.orders.list.invalidate(), utils.admin.dashboard.invalidate()]);
+      Alert.alert("Payment updated", "The payment review status has been saved.");
+    },
+    onError: (error) => Alert.alert("Payment update failed", error.message),
+  });
   const getPaymentProof = trpc.admin.orders.getPaymentProof.useQuery(
     { orderId: selectedOrder?.id ?? 0 },
     {
