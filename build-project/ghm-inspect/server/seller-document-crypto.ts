@@ -20,6 +20,25 @@ export function encryptSellerDocument(plaintext: Buffer) {
 
 type BinaryValue = Buffer | Uint8Array | ArrayBuffer | string;
 
+function describeBinaryValue(value: unknown): string {
+  if (value === null) return "type=null";
+  if (value === undefined) return "type=undefined";
+  if (Buffer.isBuffer(value)) return `type=Buffer length=${value.length}`;
+  if (value instanceof Uint8Array) return `type=Uint8Array length=${value.byteLength}`;
+  if (value instanceof ArrayBuffer) return `type=ArrayBuffer length=${value.byteLength}`;
+  if (Array.isArray(value)) return `type=Array length=${value.length}`;
+  if (typeof value === "string") return `type=string length=${value.length}`;
+  if (typeof value === "object") {
+    const objectValue = value as Record<string, unknown>;
+    const constructorName = objectValue.constructor && typeof objectValue.constructor === "function"
+      ? objectValue.constructor.name
+      : "unknown";
+    const keys = Object.keys(objectValue).slice(0, 8).join(",");
+    return `type=object constructor=${constructorName} keys=${keys || "(none)"}`;
+  }
+  return `type=${typeof value}`;
+}
+
 function toStoredBuffer(value: BinaryValue, fieldName: string): Buffer {
   if (Buffer.isBuffer(value)) return value;
   if (value instanceof Uint8Array) return Buffer.from(value);
@@ -39,7 +58,7 @@ function toStoredBuffer(value: BinaryValue, fieldName: string): Buffer {
     }
   }
 
-  throw new Error(`Stored seller document ${fieldName} is not in a supported binary format.`);
+  throw new Error(`Stored seller document ${fieldName} is not in a supported binary format (${describeBinaryValue(value)}). No binary contents were logged.`);
 }
 
 export function decryptSellerDocument(input: {
