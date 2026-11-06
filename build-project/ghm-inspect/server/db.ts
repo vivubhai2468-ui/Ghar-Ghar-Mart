@@ -1482,9 +1482,11 @@ export async function getSellerDocumentBlob(documentId: number, sellerId?: numbe
     sellerId: sellerDocuments.sellerId,
     originalName: sellerDocuments.originalName,
     mimeType: sellerDocuments.mimeType,
-    encryptedData: sellerDocumentBlobs.encryptedData,
-    iv: sellerDocumentBlobs.iv,
-    authTag: sellerDocumentBlobs.authTag,
+    // HEX() forces MySQL/TiDB to return binary columns as stable ASCII hex,
+    // avoiding driver-specific UTF-8/string decoding of arbitrary encrypted bytes.
+    encryptedData: sql<string>`HEX(${sellerDocumentBlobs.encryptedData})`,
+    iv: sql<string>`HEX(${sellerDocumentBlobs.iv})`,
+    authTag: sql<string>`HEX(${sellerDocumentBlobs.authTag})`,
     keyVersion: sellerDocumentBlobs.keyVersion,
   }).from(sellerDocuments).innerJoin(sellerDocumentBlobs, eq(sellerDocumentBlobs.documentId, sellerDocuments.id)).where(and(...conditions)).limit(1);
   return rows[0] ?? null;
