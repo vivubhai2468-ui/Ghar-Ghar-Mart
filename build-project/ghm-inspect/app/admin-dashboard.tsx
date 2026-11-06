@@ -122,6 +122,7 @@ export default function AdminDashboardScreen() {
   const { adminUser, adminLogout } = useAdminAuth();
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [selectedOrder, setSelectedOrder] = useState<AdminOrder | null>(null);
+  const [paymentReviewMessage, setPaymentReviewMessage] = useState<string | null>(null);
   const utils = trpc.useUtils();
   const liveQueryOptions = { enabled: Boolean(adminUser), refetchInterval: 15000, refetchOnWindowFocus: true };
   const ordersQuery = trpc.admin.orders.list.useQuery({ limit: 100 }, { ...liveQueryOptions, refetchInterval: 2000, staleTime: 0 });
@@ -133,11 +134,12 @@ export default function AdminDashboardScreen() {
   const dashboardQuery = trpc.admin.dashboard.useQuery(undefined, { ...liveQueryOptions, enabled: Boolean(adminUser) && activeTab === "overview" });
   const updateOrderStatus = trpc.admin.orders.updateStatus.useMutation({ onSuccess: () => void Promise.all([utils.admin.orders.list.invalidate(), utils.admin.dashboard.invalidate()]) });
   const updatePaymentStatus = trpc.admin.orders.updatePaymentStatus.useMutation({
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
+      setSelectedOrder((current) => current ? { ...current, paymentStatus: variables.paymentStatus } : current);
+      setPaymentReviewMessage(variables.paymentStatus === "completed" ? "Payment confirmed successfully." : "Payment proof rejected.");
       void Promise.all([utils.admin.orders.list.invalidate(), utils.admin.dashboard.invalidate()]);
-      Alert.alert("Payment updated", "The payment review status has been saved.");
     },
-    onError: (error) => Alert.alert("Payment update failed", error.message),
+    onError: (error) => setPaymentReviewMessage(`Payment update failed: ${error.message}`),
   });
   const getPaymentProof = trpc.admin.orders.getPaymentProof.useQuery(
     { orderId: selectedOrder?.id ?? 0 },
@@ -338,6 +340,7 @@ export default function AdminDashboardScreen() {
   }
 
   const openOrderStatus = (order: AdminOrder) => {
+    setPaymentReviewMessage(null);
     setSelectedOrder(order);
     setNewStatus(order.status);
     setOrderStatusModal(true);
@@ -349,7 +352,8 @@ export default function AdminDashboardScreen() {
   };
 
   const reviewPayment = (paymentStatus: "completed" | "failed") => {
-    if (!selectedOrder) return;
+    if (!selectedOrder || updatePaymentStatus.isPending) return;
+    setPaymentReviewMessage(paymentStatus === "completed" ? "Confirming payment…" : "Rejecting payment proof…");
     updatePaymentStatus.mutate({ id: selectedOrder.id, paymentStatus });
   };
 
@@ -880,7 +884,7 @@ export default function AdminDashboardScreen() {
             <View style={styles.modalHandle} />
             <View style={styles.modalHeading}><View><Text style={styles.modalEyebrow}>FULFILMENT UPDATE</Text><Text style={styles.modalTitle}>{selectedOrder?.orderNumber}</Text></View><Pressable onPress={() => setOrderStatusModal(false)} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}><Ionicons name="close" size={20} color="#173C25" /></Pressable></View>
             <Text style={styles.modalHelp}>Choose the next status for {selectedOrder?.customer}&apos;s order.</Text>
-            {selectedOrder?.paymentProofUrl ? <View style={styles.paymentReviewCard}><Text style={styles.paymentReviewTitle}>Online payment proof uploaded</Text>{getPaymentProof.data ? <Image source={{ uri: `data:${getPaymentProof.data.contentType};base64,${getPaymentProof.data.base64Data}` }} resizeMode="contain" style={{ width: "100%", height: 220, marginTop: 10, borderRadius: 10, backgroundColor: "#F3F6F3" }} /> : <Text style={styles.paymentMissingText}>{getPaymentProof.isLoading ? "Loading payment screenshot…" : getPaymentProof.isError ? "Could not load screenshot. Close and reopen this order to retry." : "Payment screenshot is not available."}</Text>}<View style={styles.paymentReviewActions}><Pressable onPress={() => reviewPayment("failed")} style={({ pressed }) => [styles.paymentFailedButton, pressed && styles.pressed]}><Text style={styles.paymentFailedText}>Reject proof</Text></Pressable><Pressable onPress={() => reviewPayment("completed")} style={({ pressed }) => [styles.paymentCompletedButton, pressed && styles.pressed]}><Text style={styles.paymentCompletedText}>Confirm payment</Text></Pressable></View></View> : <Text style={styles.paymentMissingText}>No payment screenshot has been uploaded for this order.</Text>}
+            {selectedOrder?.paymentProofUrl ? <View style={styles.paymentReviewCard}><Text style={styles.paymentReviewTitle}>Online payment proof uploaded</Text>{getPaymentProof.data ? <Image source={{ uri: `data:${getPaymentProof.data.contentType};base64,${getPaymentProof.data.base64Data}` }} resizeMode="contain" style={{ width: "100%", height: 220, marginTop: 10, borderRadius: 10, backgroundColor: "#F3F6F3" }} /> : <Text style={styles.paymentMissingText}>{getPaymentProof.isLoading ? "Loading payment screenshot…" : getPaymentProof.isError ? "Could not load screenshot. Close and reopen this order to retry." : "Payment screenshot is not available."}</Text>}{selectedOrder.paymentStatus !== "pending" ? <Text style={styles.paymentReviewFeedback}>Payment status: {selectedOrder.paymentStatus}</Text> : null}{paymentReviewMessage ? <Text accessibilityLiveRegion="polite" style={styles.paymentReviewFeedback}>{paymentReviewMessage}</Text> : null}<View style={styles.paymentReviewActions}><Pressable disabled={updatePaymentStatus.isPending} onPress={() => reviewPayment("failed")} style={({ pressed }) => [styles.paymentFailedButton, (pressed || updatePaymentStatus.isPending) && styles.pressed]}><Text style={styles.paymentFailedText}>{updatePaymentStatus.isPending ? "Please wait…" : "Reject proof"}</Text></Pressable><Pressable disabled={updatePaymentStatus.isPending} onPress={() => reviewPayment("completed")} style={({ pressed }) => [styles.paymentCompletedButton, (pressed || updatePaymentStatus.isPending) && styles.pressed]}><Text style={styles.paymentCompletedText}>{updatePaymentStatus.isPending ? "Please wait…" : "Confirm payment"}</Text></Pressable></View></View> : <Text style={styles.paymentMissingText}>No payment screenshot has been uploaded for this order.</Text>}
             <View style={styles.statusPicker}>{(["pending", "confirmed", "shipped", "delivered", "cancelled"] as OrderStatus[]).map((status) => <Pressable key={status} onPress={() => setNewStatus(status)} style={({ pressed }) => [styles.statusOption, newStatus === status && styles.statusOptionActive, pressed && styles.pressed]}><StatusChip label={status} /><View style={[styles.radioOuter, newStatus === status && styles.radioOuterActive]}>{newStatus === status ? <View style={styles.radioInner} /> : null}</View></Pressable>)}</View>
             <View style={styles.modalActions}><Pressable onPress={() => setOrderStatusModal(false)} style={({ pressed }) => [styles.modalSecondaryButton, pressed && styles.pressed]}><Text style={styles.modalSecondaryText}>Cancel</Text></Pressable><Pressable onPress={confirmStatusUpdate} style={({ pressed }) => [styles.modalPrimaryButton, pressed && styles.pressed]}><Text style={styles.modalPrimaryText}>Save update</Text><Ionicons name="checkmark" size={18} color="#14532D" /></Pressable></View>
           </View>
@@ -1060,6 +1064,7 @@ const styles = StyleSheet.create({
   pricingFormula: { color: "#58705E", fontSize: 10, lineHeight: 16, marginTop: 11 },
   paymentReviewCard: { marginTop: 15, borderRadius: 14, backgroundColor: "#F4F8F0", padding: 12 },
   paymentReviewTitle: { color: "#173C25", fontSize: 12, fontWeight: "800" },
+  paymentReviewFeedback: { color: "#14532D", fontSize: 12, fontWeight: "700", marginTop: 10 },
   paymentProofButton: { alignItems: "center", flexDirection: "row", gap: 6, marginTop: 9 },
   paymentProofButtonText: { color: "#14532D", fontSize: 11, fontWeight: "800" },
   paymentReviewActions: { flexDirection: "row", gap: 8, marginTop: 11 },
