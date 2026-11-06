@@ -18,8 +18,47 @@ export function encryptSellerDocument(plaintext: Buffer) {
   return { encryptedData, iv, authTag: cipher.getAuthTag() };
 }
 
-export function decryptSellerDocument(input: { encryptedData: Buffer; iv: Buffer; authTag: Buffer }): Buffer {
-  const decipher = createDecipheriv(ALGORITHM, getEncryptionKey(), Buffer.from(input.iv));
-  decipher.setAuthTag(Buffer.from(input.authTag));
-  return Buffer.concat([decipher.update(Buffer.from(input.encryptedData)), decipher.final()]);
+type BinaryValue = Buffer | Uint8Array | ArrayBuffer | string;
+
+function toStoredBuffer(value: BinaryValue, fieldName: string): Buffer {
+  if (Buffer.isBuffer(value)) return value;
+  if (value instanceof Uint8Array) return Buffer.from(value);
+  if (value instanceof ArrayBuffer) return Buffer.from(new Uint8Array(value));
+
+  if (typeof value === "string") {
+    // Some SQL adapters expose VARBINARY values as 0x-prefixed hex strings.
+    const hex = value.startsWith("0x") ? value.slice(2) : value;
+    if (hex.length > 0 && hex.length % 2 === 0 && /^[a-fA-F0-9]+$/.test(hex)) {
+      return Buffer.from(hex, "hex");
+    }
+
+    // Also accept canonical base64 from adapters that serialize binary columns.
+    const base64 = Buffer.from(value, "base64");
+    if (base64.length > 0 && base64.toString("base64").replace(/=+$/, "") === value.replace(/=+$/, "")) {
+      return base64;
+    }
+  }
+
+  throw new Error(`Stored seller document ${fieldName} is not in a supported binary format.`);
+}
+
+export function decryptSellerDocument(input: {
+  encryptedData: BinaryValue;
+  iv: BinaryValue;
+  authTag: BinaryValue;
+}): Buffer {
+  const encryptedData = toStoredBuffer(input.encryptedData, "ciphertext");
+  const iv = toStoredBuffer(input.iv, "initialization vector");
+  const authTag = toStoredBuffer(input.authTag, "authentication tag");
+
+  if (iv.length !== 12) {
+    throw new Error(`Stored seller document initialization vector must be 12 bytes (received ${iv.length}).`);
+  }
+  if (authTag.length !== 16) {
+    throw new Error(`Stored seller document authentication tag must be 16 bytes (received ${authTag.length}).`);
+  }
+
+  const decipher = createDecipheriv(ALGORITHM, getEncryptionKey(), iv);
+  decipher.setAuthTag(authTag);
+  return Buffer.concat([decipher.update(encryptedData), decipher.final()]);
 }
