@@ -89,7 +89,7 @@ export default function HelpSupportScreen() {
   const colors = useColors();
 
   const handleCall = () => {
-    Linking.openURL('tel:+919876543210');
+    Linking.openURL('tel:+917856091971');
   };
 
   const handleEmail = () => {
